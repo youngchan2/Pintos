@@ -1,0 +1,53 @@
+1. Read/Write Semaphore
+1.1 void rwsema_init(struct rw_semaphore *rwsema)
+To initilaize read/write semaphore, reader count(rcount) should be zero and the writer should be null.
+By using list_init function, initialize the list for read waiters and write waiters.
+
+1.2 void down_write(struct rw_semaphore *rwsema)
+To get the lock, disable the interrupt first.
+To make the lock exclusive, set the condition to check whether the reader or the writer is exist.
+If there are any readers or the writer exist, the thread should be pushed back to the writer waiter list and the thread should will be blocked.
+When the thread pass this condition, the thread is safe to acquire the write lock.
+Then recover the interrupt normally.
+
+1.3 void down_read(struct rw_semaphore *rwsema)
+Same as down_write fucntion, disable the interrupt first
+Unlike writers, readers have a shared lock.
+Since the multiple readers can acquire lock simultaneously, the only thing to check is the existence of writer.
+If writer exists, the thread should be pushed back to the reader waiters list and be blocked.
+When there is no writers, now the thread can acuqire read lock and increase the rcount variable.
+
+1.4 void up_write(struct rw_semaphore *rwsema)
+Same as down_write fucntion, disable the interrupt first
+After release the exclusive lock, check whether the write waiter list is empty.
+If there is a waiting writer, wake it up by using list_pop_front and thread_unblock function.
+If the writer waiters list is empty, check whether the read waiter list is empty.
+If there is a waiting reader, wake it up with same way as the waiting writer.
+
+1.5 void up_read(struct rw_semaphore *rwsema)
+Same as down_write fucntion, disable the interrupt first
+After finish reading, first check the read waiters list.
+If there is waiting reader, wake it up by using list_pop_front and thread_unblock function.
+If there is no waiting readers, check whether the reader is last and write waiters list is empty.
+If the reader is the last one and there is waiting writer, wake the waiting writer up by using list_pop_front and thread_unblock function.
+
+2. Sequence Lock
+2.1 void seqlock_init(struct seqlock *seqlock)
+Same as read/write semaphore, initialize the sequence and writer as 0 and null.
+
+2.2 int64_t read_seqlock_begin(struct seqlock *seqlock)
+To compare the sequence number after finsihing the reading, first store the current sequence number.
+So just return the sequence number in the seqlock argument.
+
+2.3 bool read_seqretry(struct seqlock *seqlock, int64_t sequence)
+This function is for check the sequence consistency after finsihing the reading.
+So check the current sequence and compare to the past sequence.
+
+2.4 void write_seqlock(struct seqlock *seqlock)
+When the writer acuqire the lock, increase the sequence number.
+While one writer is writing, other writers should be wait until the current writing is finsihed.
+So check whether the writer is writing, and if so, the thread will be blocked.
+
+2.5 void write_sequnlock(struct seqlock *seqlock)
+After finishing the writing, increase the sequence number and release writer pointer as null.
+So the other writer can acuqire the lock.
