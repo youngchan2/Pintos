@@ -415,70 +415,81 @@ void seqlock_init(struct seqlock *seqlock)
 }
 int64_t read_seqlock_begin(struct seqlock *seqlock)
 {
+  // int64_t seq;
+  // enum intr_level old_level;
+  // old_level = intr_disable();
+
+  // seq = seqlock->sequence;
+
+  // intr_set_level(old_level);
   int64_t seq;
-
-  enum intr_level old_level;
-  old_level = intr_disable();
-
-  seq = seqlock->sequence;
-
-  intr_set_level(old_level);
-
-  // atomic_load(seq, seqlock->sequence);
-
+  asm volatile(
+      "lock; movl %1, %0"
+      : "=r"(seq)
+      : "r"(seqlock->sequence)
+      : "memory");
   return seq;
 }
 bool read_seqretry(struct seqlock *seqlock, int64_t sequence)
 {
   bool same;
-  int64_t load_seq;
-  enum intr_level old_level;
-  old_level = intr_disable();
+  int64_t seq;
+  // enum intr_level old_level;
+  // old_level = intr_disable();
 
-  same = (seqlock->sequence != sequence);
+  // same = (seqlock->sequence != sequence);
 
-  intr_set_level(old_level);
+  // intr_set_level(old_level);
 
-  // atomic_load(load_seq, seqlock->sequence);
-  // same = (load_seq != sequence);
+  asm volatile(
+      "lock; movl %1, %0"
+      : "=r"(seq)
+      : "r"(seqlock->sequence)
+      : "memory");
+
+  same = (seq != sequence);
   return same;
 }
 void write_seqlock(struct seqlock *seqlock)
 {
-  enum intr_level old_level;
-  old_level = intr_disable();
+  // enum intr_level old_level;
+  // old_level = intr_disable();
+
+  // while (seqlock->writer != NULL)
+  // {
+  //   thread_block();
+  // }
+
+  // seqlock->sequence++;
+  // seqlock->writer = thread_current();
+
+  // intr_set_level(old_level);
 
   while (seqlock->writer != NULL)
   {
     thread_block();
   }
-
-  seqlock->sequence++;
-  seqlock->writer = thread_current();
-
-  intr_set_level(old_level);
-
-  /*for atomic*/
-  // while (seqlock->writer != NULL)
-  // {
-  //   thread_block();
-  // }
-  // atomic_inc(seqlock->sequence);
-  // seqlock->writer = thread_current();
+  asm volatile(
+      "lock; incl %0; movl %2, %1"
+      : "+m"(seqlock->sequence), "=m"(seqlock->writer)
+      : "r"(thread_current())
+      : "memory");
   return;
 }
 void write_sequnlock(struct seqlock *seqlock)
 {
-  enum intr_level old_level;
-  old_level = intr_disable();
+  // enum intr_level old_level;
+  // old_level = intr_disable();
 
-  seqlock->sequence++;
-  seqlock->writer = NULL;
-
-  intr_set_level(old_level);
-
-  /*for atomic*/
-  // atomic_inc(seqlock->sequence);
+  // seqlock->sequence++;
   // seqlock->writer = NULL;
+
+  // intr_set_level(old_level);
+
+  asm volatile(
+      "lock; incl %0; movl $0, %1"
+      : "+m"(seqlock->sequence), "=m"(seqlock->writer)
+      :
+      : "memory");
   return;
 }
