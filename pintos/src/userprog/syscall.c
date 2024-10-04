@@ -25,6 +25,7 @@ static void allocate_argument(int *argv, void *esp, int num)
     check_valid_ptr(tmp);
     argv[i] = *(int *)tmp;
   }
+  return;
 }
 
 static void check_valid_ptr(void *ptr)

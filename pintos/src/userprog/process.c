@@ -152,7 +152,6 @@ int process_wait(tid_t child_tid)
   {
     return -1;
   }
-
   struct thread *t = thread_current();
   int status;
   struct thread *child = get_child_thread(child_tid);
