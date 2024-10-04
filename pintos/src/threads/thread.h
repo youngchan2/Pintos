@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -94,11 +95,20 @@ struct thread
    /* Shared between thread.c and synch.c. */
    struct list_elem elem; /* List element. */
 
-#ifdef USERPROG
+   // #ifdef USERPROG
    /* Owned by userprog/process.c. */
    uint32_t *pagedir; /* Page directory. */
    struct file *fdt[FDT_SIZE];
-#endif
+   int next_fd;
+   struct file *running_file;
+   struct thread *parent;
+   struct list child_list;
+   struct list_elem child;
+   struct semaphore load_sema;
+   struct semaphore wait_sema;
+   int load_status;
+   int exit_status;
+   // #endif
 
    /* Owned by thread.c. */
    unsigned magic; /* Detects stack overflow. */
@@ -141,4 +151,5 @@ void thread_set_nice(int);
 int thread_get_recent_cpu(void);
 int thread_get_load_avg(void);
 
+struct thread *get_child_thread(tid_t tid);
 #endif /* threads/thread.h */
