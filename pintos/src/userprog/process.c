@@ -155,7 +155,6 @@ int process_wait(tid_t child_tid)
 
   struct thread *t = thread_current();
   int status;
-
   struct thread *child = get_child_thread(child_tid);
   if (child == NULL)
   {

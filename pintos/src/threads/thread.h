@@ -108,6 +108,7 @@ struct thread
    struct semaphore wait_sema;
    int load_status;
    int exit_status;
+
    // #endif
 
    /* Owned by thread.c. */
