@@ -11,10 +11,10 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
-// #ifdef USERPROG
+#ifdef USERPROG
 #include "userprog/process.h"
+#endif
 #include "filesys/file.h"
-// #endif
 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -287,12 +287,14 @@ void thread_exit(void)
      when it calls thread_schedule_tail(). */
   intr_disable();
   struct thread *t = thread_current();
-  for (int i = 3; i < FDT_SIZE; i++)
+  int i;
+  for (i = 3; i < FDT_SIZE; i++)
   {
-    file_close(t->fdt[i]);
+    if (t->fdt[i] != NULL)
+    {
+      file_close(t->fdt[i]);
+    }
   }
-  t->exit_status = -1;
-  sema_up(&t->wait_sema);
   list_remove(&thread_current()->allelem);
   thread_current()->status = THREAD_DYING;
   schedule();
@@ -459,16 +461,20 @@ init_thread(struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
 
-  for (int i = 0; i < FDT_SIZE; i++)
+  int i;
+  for (i = 0; i < FDT_SIZE; i++)
   {
     t->fdt[i] = NULL;
   }
   list_init(&t->child_list);
+  // list_push_back(&(running_thread()->child_list), &t->child);
   sema_init(&t->load_sema, 0);
   sema_init(&t->wait_sema, 0);
+  sema_init(&t->exit_sema, 0);
   t->load_status = 0;
   t->exit_status = 0;
   t->next_fd = 3;
+
   old_level = intr_disable();
   list_push_back(&all_list, &t->allelem);
   intr_set_level(old_level);
@@ -599,6 +605,7 @@ struct thread *get_child_thread(tid_t tid)
 
   return NULL;
 }
+
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof(struct thread, stack);

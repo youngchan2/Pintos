@@ -21,15 +21,11 @@
 static thread_func start_process NO_RETURN;
 static bool load(const char *cmdline, void (**eip)(void), void **esp);
 
-/* Starts a new thread running a user program loaded from
-   FILENAME.  The new thread may be scheduled (and may even exit)
-   before process_execute() returns.  Returns the new process's
-   thread id, or TID_ERROR if the thread cannot be created. */
-
-void argument_stack(char **argv, int argc, void **esp)
+static void argument_stack(char **argv, int argc, void **esp)
 {
   // argument
-  for (int i = argc - 1; i >= 0; i--)
+  int i;
+  for (i = argc - 1; i >= 0; i--)
   {
     int len = strlen(argv[i]) + 1;
     *esp -= len;
@@ -45,7 +41,7 @@ void argument_stack(char **argv, int argc, void **esp)
   // push argv[argc] (address)
   *esp -= 4;
   *(char **)(*esp) = (char *)0;
-  for (int i = argc - 1; i >= 0; i--)
+  for (i = argc - 1; i >= 0; i--)
   {
     *esp -= 4;
     *(char **)(*esp) = argv[i];
@@ -59,32 +55,47 @@ void argument_stack(char **argv, int argc, void **esp)
   *(void **)(*esp) = (void *)0;
 }
 
+/* Starts a new thread running a user program loaded from
+   FILENAME.  The new thread may be scheduled (and may even exit)
+   before process_execute() returns.  Returns the new process's
+   thread id, or TID_ERROR if the thread cannot be created. */
 tid_t process_execute(const char *file_name)
 {
   char *fn_copy;
+  char *thread_name;
   char *save_ptr;
   tid_t tid;
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page(0);
+  thread_name = palloc_get_page(0);
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy(fn_copy, file_name, PGSIZE);
-  fn_copy = strtok_r(fn_copy, " ", &save_ptr);
+  strlcpy(thread_name, file_name, PGSIZE);
 
+  thread_name = strtok_r(thread_name, " ", &save_ptr);
+  // printf("fn_copy: %s\n", fn_copy);
+  // printf("cmd name: %s\n", thread_name);
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create(thread_name, PRI_DEFAULT, start_process, fn_copy);
+
+  struct thread *child = get_child_thread(tid);
+  if (child == NULL)
+    return -1;
+  sema_down(&child->load_sema);
+
+  palloc_free_page(thread_name);
   if (tid == TID_ERROR)
     palloc_free_page(fn_copy);
-
-  struct thread *child = get_childd_thread(tid);
-  if (child == NULL)
+  // exec 실행 시 실행 불가능한 프로그램이 온 경우 load 실패에 대한 처리
+  if (!child->load_status)
   {
-    return TID_ERROR;
+    list_remove(&child->child);
+    return -1;
   }
 
-  sema_down(&child->load_sema);
   return tid;
 }
 
@@ -101,27 +112,35 @@ start_process(void *file_name_)
   int argc = 0;
   char *token, *save_ptr;
 
-  for (token = strtok_r(file_name, " ", &save_ptr); token != NULL; token = strtok(NULL, " ", &save_ptr))
+  for (token = strtok_r(file_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr))
   {
     argv[argc] = token;
     argc++;
   }
-
+  // int i = 0;
+  // printf("argc: %d\n", argc);
+  // for (i = 0; i < argc; i++)
+  // {
+  //   printf("argv[%d] = '%s'\n", i, argv[i]);
+  // }
   /* Initialize interrupt frame and load executable. */
   memset(&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load(file_name, &if_.eip, &if_.esp);
-
+  struct thread *t = thread_current();
   if (success)
   {
     argument_stack(argv, argc, &if_.esp);
+    if_.edi = argc;
+    if_.esi = (uint32_t)if_.esp + sizeof(void *);
   }
-  struct thread *t = thread_current();
   t->load_status = success;
+  // printf("Initial esp: %p\n", if_.esp);
+  // hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true);
+  // sema_up(&thread_current()->load_sema);
   sema_up(&t->load_sema);
-
   /* If load failed, quit. */
   palloc_free_page(file_name);
   if (!success)
@@ -148,25 +167,28 @@ start_process(void *file_name_)
    does nothing. */
 int process_wait(tid_t child_tid)
 {
-  if (child_tid < 0)
-  {
-    return -1;
-  }
+  // int i;
+  // for (i = 0; i < 1000000000; i++)
+  //   ;
   struct thread *t = thread_current();
+  struct list_elem *e;
+  struct thread *wait_child = NULL;
   int status;
-  struct thread *child = get_child_thread(child_tid);
-  if (child == NULL)
+
+  for (e = list_begin(&t->child_list); e != list_end(&t->child_list); e = list_next(e))
   {
-    return -1;
-  }
-  else
-  {
-    sema_down(&child->wait_sema);
-    status = child->exit_status;
-    list_remove(&child->child);
+    wait_child = list_entry(e, struct thread, child);
+    if (child_tid == wait_child->tid)
+    {
+      sema_down(&wait_child->wait_sema);
+      status = wait_child->exit_status;
+      list_remove(&wait_child->child);
+      sema_up(&wait_child->exit_sema);
+      return status;
+    }
   }
 
-  return status;
+  return -1;
 }
 
 /* Free the current process's resources. */
@@ -191,6 +213,8 @@ void process_exit(void)
     pagedir_activate(NULL);
     pagedir_destroy(pd);
   }
+  sema_up(&cur->wait_sema);
+  sema_down(&cur->exit_sema);
 }
 
 /* Sets up the CPU for running user code in the current
@@ -303,9 +327,7 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
     printf("load: %s: open failed\n", file_name);
     goto done;
   }
-
   file_deny_write(file);
-  t->running_file = file;
 
   /* Read and verify executable header. */
   if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr || memcmp(ehdr.e_ident, "\177ELF\1\1\1", 7) || ehdr.e_type != 2 || ehdr.e_machine != 3 || ehdr.e_version != 1 || ehdr.e_phentsize != sizeof(struct Elf32_Phdr) || ehdr.e_phnum > 1024)

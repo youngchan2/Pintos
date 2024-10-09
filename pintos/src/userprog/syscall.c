@@ -1,7 +1,6 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
 #include <syscall-nr.h>
-#include <sys/types.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "devices/shutdown.h"
@@ -12,21 +11,9 @@
 #include "userprog/pagedir.h"
 #include "filesys/file.h"
 #include "devices/input.h"
+#include <string.h>
 
 static void syscall_handler(struct intr_frame *);
-static struct lock filesys_lock;
-
-static void allocate_argument(int *argv, void *esp, int num)
-{
-  void *tmp = esp;
-  for (int i = 0; i < num; i++)
-  {
-    tmp += 4;
-    check_valid_ptr(tmp);
-    argv[i] = *(int *)tmp;
-  }
-  return;
-}
 
 static void check_valid_ptr(void *ptr)
 {
@@ -40,6 +27,20 @@ static void check_valid_ptr(void *ptr)
   }
 }
 
+static void allocate_argument(int *argv, void *esp, int num)
+{
+  void *tmp = esp;
+  int i;
+  // tmp += 16;
+  for (i = 0; i < num; i++)
+  {
+    tmp += 4;
+    check_valid_ptr(tmp);
+    argv[i] = *(int *)tmp;
+  }
+  return;
+}
+
 void syscall_init(void)
 {
   lock_init(&filesys_lock);
@@ -47,14 +48,15 @@ void syscall_init(void)
 }
 
 static void
-syscall_handler(struct intr_frame *f UNUSED)
+syscall_handler(struct intr_frame *f)
 {
-  // printf ("system call!\n");
+  // printf("system call!\n");
   uint32_t *p = f->esp;
   check_valid_ptr((void *)p);
   uint32_t syscall_num = *p;
   int argv[3];
-
+  // printf("syscall num: %d\n", syscall_num);
+  // hex_dump(f->esp, f->esp, 100, 1);
   switch (syscall_num)
   {
   case SYS_HALT:
@@ -94,6 +96,7 @@ syscall_handler(struct intr_frame *f UNUSED)
     break;
   case SYS_WRITE:
     allocate_argument(argv, p, 3);
+    // printf("sys write : %s\n", (char *)argv[1]);
     (f->eax) = write((int)argv[0], (const void *)argv[1], (unsigned)argv[2]);
     break;
   case SYS_SEEK:
@@ -109,7 +112,6 @@ syscall_handler(struct intr_frame *f UNUSED)
     close((int)argv[0]);
     break;
   }
-  thread_exit();
 }
 
 void halt()
@@ -160,33 +162,41 @@ bool remove(const char *file)
 
 int open(const char *file)
 {
-  lock_acquire(&filesys_lock);
-  struct file *open_file = filesys_open(file);
-
-  // 2024-10-02 이어서
-  struct thread *cur_thread = thread_current();
-  int fd;
-  if (open_file != NULL)
+  if (file == NULL)
   {
-    for (fd = 2; fd < FDT_SIZE; fd++)
+    exit(-1);
+  }
+  check_valid_ptr((void *)file);
+  lock_acquire(&filesys_lock);
+  struct thread *cur_thread = thread_current();
+  struct file *open_file = filesys_open(file);
+  if (open_file == NULL)
+  {
+    lock_release(&filesys_lock);
+    return -1;
+  }
+  int fd;
+  for (fd = 3; fd < FDT_SIZE; fd++)
+  {
+    if (cur_thread->fdt[fd] == NULL)
     {
-      if (cur_thread->fdt[fd] == NULL)
-        break;
-    }
-    if (fd == FDT_SIZE)
-    {
-      fd = -1;
-    }
-    else
-    {
-      cur_thread->fdt[fd] = open_file;
+      if (strcmp(thread_current()->name, file) == 0)
+      {
+        file_deny_write(open_file);
+      }
+      break;
     }
   }
-  else
+  if (fd == FDT_SIZE)
   {
     fd = -1;
   }
+  else
+  {
+    cur_thread->fdt[fd] = open_file;
+  }
   cur_thread->next_fd++;
+
   lock_release(&filesys_lock);
 
   return fd;
@@ -216,11 +226,11 @@ int read(int fd, void *buffer, unsigned size)
   }
 
   struct thread *cur_thread = thread_current();
-  int actual_read;
+  unsigned actual_read;
+  check_valid_ptr(buffer);
   lock_acquire(&filesys_lock);
   if (fd == 0)
   {
-    // 2024-10-04 이어서
     actual_read = 0;
     while (actual_read < size)
     {
@@ -229,10 +239,8 @@ int read(int fd, void *buffer, unsigned size)
       if (c == '\0')
         break;
     }
-    lock_release(&filesys_lock);
-    return actual_read;
   }
-  else if (fd > 2)
+  else
   {
     struct file *open_file = cur_thread->fdt[fd];
     if (open_file == NULL)
@@ -241,10 +249,10 @@ int read(int fd, void *buffer, unsigned size)
       exit(-1);
     }
     actual_read = file_read(open_file, buffer, size);
-    lock_release(&filesys_lock);
-
-    return actual_read;
   }
+  lock_release(&filesys_lock);
+
+  return (int)actual_read;
 }
 
 int write(int fd, const void *buffer, unsigned size)
@@ -264,19 +272,21 @@ int write(int fd, const void *buffer, unsigned size)
     lock_release(&filesys_lock);
     return actual_write;
   }
-  else if (fd > 2)
-  {
-    open_file = cur_thread->fdt[fd];
 
-    if (open_file == NULL)
-    {
-      lock_release(&filesys_lock);
-      exit(-1);
-    }
-    actual_write = file_write(open_file, buffer, size);
+  open_file = cur_thread->fdt[fd];
+
+  if (open_file == NULL)
+  {
     lock_release(&filesys_lock);
-    return actual_write;
+    exit(-1);
   }
+  // if (open_file->deny_write)
+  // {
+  //   file_deny_write(open_file);
+  // }
+  actual_write = file_write(open_file, buffer, size);
+  lock_release(&filesys_lock);
+  return actual_write;
 }
 
 void seek(int fd, unsigned position)
@@ -323,6 +333,10 @@ void close(int fd)
     exit(-1);
   }
   struct thread *cur_thread = thread_current();
+  if (cur_thread->fdt[fd] == NULL)
+  {
+    exit(-1);
+  }
   lock_acquire(&filesys_lock);
   file_close(cur_thread->fdt[fd]);
   cur_thread->fdt[fd] = NULL;
