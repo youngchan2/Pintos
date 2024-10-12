@@ -334,7 +334,6 @@ void rwsema_init(struct rw_semaphore *rwsema)
 }
 void down_write(struct rw_semaphore *rwsema)
 {
-  // interrupt block
   enum intr_level old_level;
   old_level = intr_disable();
 

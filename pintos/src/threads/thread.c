@@ -11,10 +11,12 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "userprog/syscall.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
 #include "filesys/file.h"
+#include "threads/malloc.h"
 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -286,15 +288,15 @@ void thread_exit(void)
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
   intr_disable();
-  struct thread *t = thread_current();
-  int i;
-  for (i = 3; i < FDT_SIZE; i++)
-  {
-    if (t->fdt[i] != NULL)
-    {
-      file_close(t->fdt[i]);
-    }
-  }
+  // struct thread *t = thread_current();
+  // int i;
+  // for (i = 3; i < FDT_SIZE; i++)
+  // {
+  //   if (t->fdt[i] != NULL)
+  //   {
+  //     file_close(t->fdt[i]);
+  //   }
+  // }
   list_remove(&thread_current()->allelem);
   thread_current()->status = THREAD_DYING;
   schedule();
@@ -461,13 +463,14 @@ init_thread(struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
 
-  int i;
-  for (i = 0; i < FDT_SIZE; i++)
-  {
-    t->fdt[i] = NULL;
-  }
+  // int i;
+  // for (i = 0; i < FDT_SIZE; i++)
+  // {
+  //   t->fdt[i] = NULL;
+  // }
+  list_init(&t->fdt);
   list_init(&t->child_list);
-  // list_push_back(&(running_thread()->child_list), &t->child);
+  // copy_fdt(t->parent, t);
   sema_init(&t->load_sema, 0);
   sema_init(&t->wait_sema, 0);
   sema_init(&t->exit_sema, 0);
@@ -604,6 +607,79 @@ struct thread *get_child_thread(tid_t tid)
   }
 
   return NULL;
+}
+
+void copy_fdt(struct thread *parent, struct thread *child)
+{
+  struct list_elem *e, *i;
+  for (i = list_begin(&parent->fdt); i != list_end(&parent->fdt); i = list_next(i))
+  {
+    struct fd *fdelem = list_entry(i, struct fd, fd_elem);
+    if (fdelem->pipe != NULL)
+    {
+      for (e = list_begin(&parent->fdt); e != list_end(&parent->fdt); e = list_next(e))
+      {
+        struct fd *parent_fd = list_entry(e, struct fd, fd_elem);
+        struct fd *child_fd = (struct fd *)malloc(sizeof(struct fd));
+
+        if (parent_fd->file_type == FD_PIPE_READ)
+        {
+          child_fd->fd = 0;
+        }
+        else
+        {
+          child_fd->fd = parent_fd->fd;
+        }
+        child_fd->file_type = parent_fd->file_type;
+        child_fd->pipe = parent_fd->pipe;
+        list_push_back(&child->fdt, &child_fd->fd_elem);
+        // printf("copy fd %d\n", child_fd->fd);
+      }
+      child->next_fd = parent->next_fd;
+      // sema_up(&child->load_sema);
+      break;
+    }
+  }
+
+  return;
+}
+
+void print_all_pids(void)
+{
+  struct list_elem *e;
+  enum intr_level old_level;
+
+  /* Disable interrupts to safely access the process list. */
+  old_level = intr_disable();
+
+  printf("List of all process PIDs: [%d]\n", thread_current()->tid);
+  for (e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e))
+  {
+    struct thread *t = list_entry(e, struct thread, allelem);
+    printf("Process Name: %s, PID: %d, Status: %d, load sema: %d\n", t->name, t->tid, t->status, t->load_sema.value);
+  }
+
+  /* Re-enable interrupts. */
+  intr_set_level(old_level);
+}
+
+void print_wait_pids(void)
+{
+  struct list_elem *e;
+  enum intr_level old_level;
+
+  /* Disable interrupts to safely access the process list. */
+  old_level = intr_disable();
+
+  printf("List of ready process PIDs: [%d]\n", thread_current()->tid);
+  for (e = list_begin(&ready_list); e != list_end(&ready_list); e = list_next(e))
+  {
+    struct thread *t = list_entry(e, struct thread, allelem);
+    printf("Process Name: %s, PID: %d, Status: %d, load sema: %d\n", t->name, t->tid, t->status, t->load_sema.value);
+  }
+
+  /* Re-enable interrupts. */
+  intr_set_level(old_level);
 }
 
 /* Offset of `stack' member within `struct thread'.

@@ -1,0 +1,31 @@
+{
+    "files.associations": {
+        "syscall-nr.h": "c",
+        "thread.h": "c",
+        "pagedir.h": "c",
+        "stdint.h": "c",
+        "process.h": "c",
+        "*.inc": "c",
+        "*.tcc": "c",
+        "exception": "c",
+        "memory_resource": "c",
+        "fstream": "c",
+        "iosfwd": "c",
+        "new": "c",
+        "ostream": "c",
+        "sstream": "c",
+        "streambuf": "c",
+        "optional": "c",
+        "istream": "c",
+        "ratio": "c",
+        "system_error": "c",
+        "array": "c",
+        "functional": "c",
+        "tuple": "c",
+        "type_traits": "c",
+        "utility": "c",
+        "filesys.h": "c",
+        "off_t.h": "c",
+        "file.h": "c"
+    }
+}

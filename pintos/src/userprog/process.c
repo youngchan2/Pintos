@@ -76,15 +76,20 @@ tid_t process_execute(const char *file_name)
   strlcpy(thread_name, file_name, PGSIZE);
 
   thread_name = strtok_r(thread_name, " ", &save_ptr);
+  // printf("thread name %s\n", thread_name);
   // printf("fn_copy: %s\n", fn_copy);
   // printf("cmd name: %s\n", thread_name);
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create(thread_name, PRI_DEFAULT, start_process, fn_copy);
 
+  // printf("child tid %d \n", tid);
   struct thread *child = get_child_thread(tid);
   if (child == NULL)
     return -1;
-  sema_down(&child->load_sema);
+  // printf("process execute sema down %d\n", thread_current()->tid);
+
+  sema_down(&thread_current()->load_sema);
+  // print_all_pids();
 
   palloc_free_page(thread_name);
   if (tid == TID_ERROR)
@@ -104,6 +109,11 @@ tid_t process_execute(const char *file_name)
 static void
 start_process(void *file_name_)
 {
+  struct thread *t = thread_current();
+  // sema_down(&t->load_sema);
+  // printf("start process sema down %d\n", t->tid);
+  // printf("parent %d\n", t->parent->tid);
+  copy_fdt(t->parent, t);
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
@@ -129,7 +139,7 @@ start_process(void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load(file_name, &if_.eip, &if_.esp);
-  struct thread *t = thread_current();
+
   if (success)
   {
     argument_stack(argv, argc, &if_.esp);
@@ -140,7 +150,20 @@ start_process(void *file_name_)
   // printf("Initial esp: %p\n", if_.esp);
   // hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true);
   // sema_up(&thread_current()->load_sema);
-  sema_up(&t->load_sema);
+  // printf("finish child program tid %d, before sema up parent status %d\n", t->tid, t->parent->status);
+  sema_up(&t->parent->load_sema);
+  // sema_up(&t->load_sema);
+  // printf("after sema up parent status %d\n", t->parent->status);
+  // printf("----start process-----\n");
+  // print_wait_pids();
+  // printf("-----------------------\n");
+  // print_all_pids();
+  // if (t->tid == 3)
+  // {
+  //   t->load_sema.value = 0;
+  // }
+  // printf("finish %d sema val %d\n", t->tid, t->load_sema.value);
+  // printf("sema up %d\n", t->parent->tid);
   /* If load failed, quit. */
   palloc_free_page(file_name);
   if (!success)
@@ -174,12 +197,13 @@ int process_wait(tid_t child_tid)
   struct list_elem *e;
   struct thread *wait_child = NULL;
   int status;
-
+  // printf("wait tid %d\n", t->tid);
   for (e = list_begin(&t->child_list); e != list_end(&t->child_list); e = list_next(e))
   {
     wait_child = list_entry(e, struct thread, child);
     if (child_tid == wait_child->tid)
     {
+      // printf("wait sema %d %d\n", wait_child->wait_sema.value, wait_child->tid);
       sema_down(&wait_child->wait_sema);
       status = wait_child->exit_status;
       list_remove(&wait_child->child);
@@ -196,7 +220,7 @@ void process_exit(void)
 {
   struct thread *cur = thread_current();
   uint32_t *pd;
-
+  // printf("exit thread tid %d\n", cur->tid);
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -213,6 +237,7 @@ void process_exit(void)
     pagedir_activate(NULL);
     pagedir_destroy(pd);
   }
+  // sema_up(&cur->parent->load_sema);
   sema_up(&cur->wait_sema);
   sema_down(&cur->exit_sema);
 }
@@ -319,7 +344,10 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
   if (t->pagedir == NULL)
     goto done;
   process_activate();
-
+  // printf("file name %s\n", file_name);
+  // printf("----%s----\n", file_name);
+  // print_all_pids();
+  // printf("--------------\n");
   /* Open executable file. */
   file = filesys_open(file_name);
   if (file == NULL)

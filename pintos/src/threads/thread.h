@@ -98,7 +98,8 @@ struct thread
    // #ifdef USERPROG
    /* Owned by userprog/process.c. */
    uint32_t *pagedir; /* Page directory. */
-   struct file *fdt[FDT_SIZE];
+   // struct file *fdt[FDT_SIZE];
+   struct list fdt;
    int next_fd;
    struct file *running_file;
    struct thread *parent;
@@ -153,4 +154,7 @@ int thread_get_recent_cpu(void);
 int thread_get_load_avg(void);
 
 struct thread *get_child_thread(tid_t tid);
+void copy_fdt(struct thread *parent, struct thread *child);
+void print_all_pids(void);
+void print_wait_pids(void);
 #endif /* threads/thread.h */
