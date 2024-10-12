@@ -1,0 +1,60 @@
+# -*- makefile -*-
+
+# Test names.
+tests/threads_TESTS = $(addprefix tests/threads/,			\
+alarm-simultaneous alarm-priority alarm-zero alarm-negative \
+seqlock1 seqlock2 seqlock3 seqlock4 seqlock5				\
+rwsema1 rwsema2 rwsema3 rwsema4 rwsema5 rwsema6)
+
+# Sources for tests.
+tests/threads_SRC  = tests/threads/tests.c
+#tests/threads_SRC += tests/threads/mlfqs-load-1.c
+#tests/threads_SRC += tests/threads/mlfqs-load-60.c
+#tests/threads_SRC += tests/threads/mlfqs-load-avg.c
+#tests/threads_SRC += tests/threads/mlfqs-recent-1.c
+#tests/threads_SRC += tests/threads/mlfqs-fair.c
+#tests/threads_SRC += tests/threads/mlfqs-block.c
+tests/threads_SRC += tests/threads/rwsema1.c
+tests/threads_SRC += tests/threads/rwsema2.c
+tests/threads_SRC += tests/threads/rwsema3.c
+tests/threads_SRC += tests/threads/rwsema4.c
+tests/threads_SRC += tests/threads/rwsema5.c
+tests/threads_SRC += tests/threads/rwsema6.c
+tests/threads_SRC += tests/threads/seqlock1.c
+tests/threads_SRC += tests/threads/seqlock2.c
+tests/threads_SRC += tests/threads/seqlock3.c
+tests/threads_SRC += tests/threads/seqlock4.c
+tests/threads_SRC += tests/threads/seqlock5.c
+tests/threads_SRC += tests/threads/alarm-wait.c
+tests/threads_SRC += tests/threads/alarm-simultaneous.c
+tests/threads_SRC += tests/threads/alarm-priority.c
+tests/threads_SRC += tests/threads/alarm-zero.c
+tests/threads_SRC += tests/threads/alarm-negative.c
+#tests/threads_SRC += tests/threads/priority-change.c
+#tests/threads_SRC += tests/threads/priority-donate-one.c
+#tests/threads_SRC += tests/threads/priority-donate-multiple.c
+#tests/threads_SRC += tests/threads/priority-donate-multiple2.c
+#tests/threads_SRC += tests/threads/priority-donate-nest.c
+#tests/threads_SRC += tests/threads/priority-donate-sema.c
+#tests/threads_SRC += tests/threads/priority-donate-lower.c
+#tests/threads_SRC += tests/threads/priority-fifo.c
+#tests/threads_SRC += tests/threads/priority-preempt.c
+#tests/threads_SRC += tests/threads/priority-sema.c
+#tests/threads_SRC += tests/threads/priority-condvar.c
+#tests/threads_SRC += tests/threads/priority-donate-chain.c
+#tests/threads_SRC += tests/threads/rwsema2.c
+
+#MLFQS_OUTPUTS = 				\
+#tests/threads/mlfqs-load-1.output		\
+#tests/threads/mlfqs-load-60.output		\
+#tests/threads/mlfqs-load-avg.output		\
+#tests/threads/mlfqs-recent-1.output		\
+#tests/threads/mlfqs-fair-2.output		\
+#tests/threads/mlfqs-fair-20.output		\
+#tests/threads/mlfqs-nice-2.output		\
+#tests/threads/mlfqs-nice-10.output		\
+#tests/threads/mlfqs-block.output
+
+#$(MLFQS_OUTPUTS): KERNELFLAGS += -mlfqs
+#$(MLFQS_OUTPUTS): TIMEOUT = 480
+

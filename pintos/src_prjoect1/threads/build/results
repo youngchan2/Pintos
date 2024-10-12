@@ -1,0 +1,15 @@
+pass tests/threads/alarm-simultaneous
+pass tests/threads/alarm-priority
+pass tests/threads/alarm-zero
+pass tests/threads/alarm-negative
+pass tests/threads/seqlock1
+pass tests/threads/seqlock2
+pass tests/threads/seqlock3
+pass tests/threads/seqlock4
+pass tests/threads/seqlock5
+pass tests/threads/rwsema1
+pass tests/threads/rwsema2
+pass tests/threads/rwsema3
+pass tests/threads/rwsema4
+pass tests/threads/rwsema5
+pass tests/threads/rwsema6

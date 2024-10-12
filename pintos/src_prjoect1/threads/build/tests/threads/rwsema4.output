@@ -1,0 +1,25 @@
+qemu-system-i386 -device isa-debug-exit -drive file=/tmp/bIQde_3nhw.dsk,format=raw,index=0,media=disk -m 4 -net none -nographic -monitor null
+c[?7l[2J[0mSeaBIOS (version 1.13.0-1ubuntu1.1)
+Booting from Hard Disk...
+PPiiLLoo  hhddaa1
+1
+LLooaaddiinngg...............
+Kernel command line: -q run rwsema4
+Pintos booting with 3,968 kB RAM...
+367 pages available in kernel pool.
+367 pages available in user pool.
+Calibrating timer...  414,105,600 loops/s.
+Boot complete.
+Executing 'rwsema4':
+(rwsema4) begin
+(rwsema4) Thread main downed read.
+(rwsema4) Thread reader downed read.
+(rwsema4) Thread reader up read.
+(rwsema4) Thread main up read.
+(rwsema4) end
+Execution of 'rwsema4' complete.
+Timer: 1025 ticks
+Thread: 0 idle ticks, 1025 kernel ticks, 0 user ticks
+Console: 492 characters output
+Keyboard: 0 keys pressed
+Powering off...
