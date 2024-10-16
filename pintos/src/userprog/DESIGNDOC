@@ -1,0 +1,285 @@
+             +--------------------------+
+             |          CS 140          |
+             | PROJECT 2: USER PROGRAMS |
+             |     DESIGN DOCUMENT      |
+             +--------------------------+
+
+---- GROUP ----
+
+>> Fill in the names and email addresses of your group members.
+
+Youngchan Kim <chani227@kaist.ac.kr>
+
+---- PRELIMINARIES ----
+
+>> If you have any preliminary comments on your submission, notes for the
+>> TAs, or extra credit, please give them here.
+
+>> Please cite any offline or online sources you consulted while
+>> preparing your submission, other than the Pintos documentation, course
+>> text, lecture notes, and course staff.
+
+               ARGUMENT PASSING
+               ================
+
+---- DATA STRUCTURES ----
+
+>> A1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+static void argument_stack(char **argv, int argc, void **esp)
+{
+  // argument
+  int i;
+  for (i = argc - 1; i >= 0; i--)
+  {
+    int len = strlen(argv[i]) + 1;
+    *esp -= len;
+    strlcpy(*esp, argv[i], len);
+    argv[i] = *esp;
+  }
+  // align
+  while ((int)*esp % 4 != 0)
+  {
+    (*esp)--;
+    *(uint8_t *)(*esp) = (uint8_t)0;
+  }
+  // push argv[argc] (address)
+  *esp -= 4;
+  *(char **)(*esp) = (char *)0;
+  for (i = argc - 1; i >= 0; i--)
+  {
+    *esp -= 4;
+    *(char **)(*esp) = argv[i];
+  }
+  // push argv, argc
+  *esp -= 4;
+  *(char ***)(*esp) = (char **)((*esp) + 4);
+  *esp -= 4;
+  *(int *)(*esp) = argc;
+  *esp -= 4;
+  *(void **)(*esp) = (void *)0;
+}
+
+
+Add function to push the arguments into the stack.
+
+---- ALGORITHMS ----
+
+>> A2: Briefly describe how you implemented argument parsing.  How do
+>> you arrange for the elements of argv[] to be in the right order?
+>> How do you avoid overflowing the stack page?
+
+    Using strtook_r() function to parse the argument. I save the each address for the token in the 'argv' array and increment the argc. Then, using argument_stack() function to push argv, argc, esp into the stack and follow the calling convention in lab2 handout.
+---- RATIONALE ----
+
+>> A3: Why does Pintos implement strtok_r() but not strtok()?
+    strtok_r() can save the position of the next token, so we can call this parsing function with many threads simultaneously. 
+>> A4: In Pintos, the kernel separates commands into a executable name
+>> and arguments.  In Unix-like systems, the shell does this
+>> separation.  Identify at least two advantages of the Unix approach.
+    First, shell can parse it faster than kernel does. Second, it can prevent to go to the kernel space.
+
+                 SYSTEM CALLS
+                 ============
+
+---- DATA STRUCTURES ----
+
+>> B1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+    struct thread
+{
+#ifdef USERPROG
+   /* Owned by userprog/process.c. */
+   uint32_t *pagedir; /* Page directory. */
+   // struct file *fdt[FDT_SIZE];
+   struct list fdt;
+   int fd_list[FDT_SIZE];
+   int next_fd;
+   struct thread *parent;
+   struct list child_list;
+   struct list_elem child;
+   struct semaphore load_sema;
+   struct semaphore wait_sema;
+   struct semaphore exit_sema;
+   int load_status;
+   int exit_status;
+#endif
+};
+
+enum fd_type
+{
+    FD_REGULAR,
+    FD_STDIN,
+    FD_STDOUT,
+    FD_STDERR,
+    FD_PIPE_READ,
+    FD_PIPE_WRITE
+};
+
+struct fd
+{
+    int fd;
+    struct file *file;
+    struct list_elem fd_elem;
+    struct pipe *pipe;
+    enum fd_type file_type;
+};
+
+struct pipe
+{
+    char buffer[BUF_SIZE];
+    int fd_cnt;
+    int num_readers;
+    int num_writers;
+    int fd_read;
+    int fd_write;
+    int read_pos;
+    int write_pos;
+    struct lock pipe_lock;
+    struct semaphore empty_sema;
+    struct semaphore full_sema;
+};
+
+    To treat file and pipe system call, I add file descriptor (fd) structure and pipe structure.
+    I manage the file descriptor with the varible fdt in thread structure.
+    In the pipe structure, I add the information about the the number of readers and writers and the fd number of reader and writer.
+    I try to prevent the race condition while writing and reading in pipe by empty_sema and full_sema but I fail to pass the piep-short test.
+
+>> B2: Describe how file descriptors are associated with open files.
+>> Are file descriptors unique within the entire OS or just within a
+>> single process?
+
+    Evey open system call, allocate the new memory for fd and initialize it. Save the file structure in the fd structure and find the empty fd using fd_list in thread structure. If the number is using, the list element has 1, otherwise is 0. This file descriptors are unique within a single process. However, for the pipe system call, child process will copy these values from its parent process.
+
+---- ALGORITHMS ----
+
+>> B3: Describe your code for reading and writing user data from the
+>> kernel.
+
+    When interrupt occurs, I can get into the interrupt frame.
+    I can access to kernel stack with esp register and allocate_argument() function.
+    With check_valid_ptr() function, I check the address validation for evey system call.
+    Lastly, save the return address into the eax register.
+
+>> B4: Suppose a system call causes a full page (4,096 bytes) of data
+>> to be copied from user space into the kernel.  What is the least
+>> and the greatest possible number of inspections of the page table
+>> (e.g. calls to pagedir_get_page()) that might result?  What about
+>> for a system call that only copies 2 bytes of data?  Is there room
+>> for improvement in these numbers, and how much?
+
+    The least case will be the page is large enough to handle a full page. In this case, we need only one call to get page.
+    However, if the page is not enough, we need maximum 4096 calls for a full page. (1 bytes for each call)
+    Similarly, if a system call copies 2 bytes, the least case will be 1 and the greatest case will be 2.
+    To improve this number, the memory should have as much as consecutive space.
+
+>> B5: Briefly describe your implementation of the "wait" system call
+>> and how it interacts with process termination.
+
+    Find all of the child process and decrease the child semaphore for waiting and turn into blocking state.
+    When the child process goes into thread_exit, it increase the wait semaphore and decrease the exit semaphore.
+    The reason of decreasing exit semaphore is parent process should check whether the child process finish or not.
+    After check the child process status, parent process increase the exit semaphore for child process and child process can terminate.
+
+>> B6: Any access to user program memory at a user-specified address
+>> can fail due to a bad pointer value.  Such accesses must cause the
+>> process to be terminated.  System calls are fraught with such
+>> accesses, e.g. a "write" system call requires reading the system
+>> call number from the user stack, then each of the call's three
+>> arguments, then an arbitrary amount of user memory, and any of
+>> these can fail at any point.  This poses a design and
+>> error-handling problem: how do you best avoid obscuring the primary
+>> function of code in a morass of error-handling?  Furthermore, when
+>> an error is detected, how do you ensure that all temporarily
+>> allocated resources (locks, buffers, etc.) are freed?  In a few
+>> paragraphs, describe the strategy or strategies you adopted for
+>> managing these issues.  Give an example.
+
+    Every allocation for the argument, I check the address valdiation with check_valid_ptr() function.
+    For each system call, I check wheter the fd, file pointer, buffer address is validate or not.
+    If the address is not validate, it will call exit(-1).
+    Every resources will be freed in the exit system call.
+
+---- SYNCHRONIZATION ----
+
+>> B7: The "exec" system call returns -1 if loading the new executable
+>> fails, so it cannot return before the new executable has completed
+>> loading.  How does your code ensure this?  How is the load
+>> success/failure status passed back to the thread that calls "exec"?
+
+    When child process creates, this process will go into start_process function.
+    This function will call load() function to load the program so we can find and save the result of load.
+    Parent process should wait loading prorgram in child process so I use the load semaphore.
+    If load fails, the parent process will wait for the termination of child process so I call process_wait().
+    With load_status member in thread structure, I can check the child process.
+
+>> B8: Consider parent process P with child process C.  How do you
+>> ensure proper synchronization and avoid race conditions when P
+>> calls wait(C) before C exits?  After C exits?  How do you ensure
+>> that all resources are freed in each case?  How about when P
+>> terminates without waiting, before C exits?  After C exits?  Are
+>> there any special cases?
+
+    P calls wait(C) before C exits
+        Using exit and wait semaphore in wait function, P can wait until the C exits. In process_exit(), C will increase the wait semaphore when it exits.
+        Then, P can exit properly.
+    P calls wait(C) after C exits
+        C won't be in the child list of P, P can't find the C's tid in the list. wait(C) will return -1
+    
+    If P exit without waiting and child tires to exit, child will exit without any problem.
+
+
+---- RATIONALE ----
+
+>> B9: Why did you choose to implement access to user memory from the
+>> kernel in the way that you did?
+
+    I check the address whether it is in the physical memory space.
+    Since the size of the physical memory space is fixed in this lab, I can set the range of this space.
+    I use is_user_vaddr() function ot check the address and compare to the lower bound of this space.
+
+>> B10: What advantages or disadvantages can you see to your design
+>> for file descriptors?
+
+    I made the fd structure which contains file descriptor number, pipe information, file type and file.
+    I add the pipe information for the pipe system call.
+    To manage fd number and make the limitation length of file descriptor and maintain,
+    I add fd_list in thread structure. The element in this list will have value 1 if the index number gets file descriptor.
+    By this list and next_fd variable, it makes easy to find empty file descriptor number.
+
+    By this method, it can support pipe system call.
+    However, it takes more time to find the specific file descriptor in the list. This method will search it in linear time.
+    Also, I didn't pass the multi-oom test. It has an issue when it tries to close all of the file descriptor in exit system call.
+
+>> B11: The default tid_t to pid_t mapping is the identity mapping.
+>> If you changed it, what advantages are there to your approach?
+    
+    I didn't change it
+
+               SURVEY QUESTIONS
+               ================
+
+Answering these questions is optional, but it will help us improve the
+course in future quarters.  Feel free to tell us anything you
+want--these questions are just to spur your thoughts.  You may also
+choose to respond anonymously in the course evaluations at the end of
+the quarter.
+
+>> In your opinion, was this assignment, or any one of the three problems
+>> in it, too easy or too hard?  Did it take too long or too little time?
+
+>> Did you find that working on a particular part of the assignment gave
+>> you greater insight into some aspect of OS design?
+
+>> Is there some particular fact or hint we should give students in
+>> future quarters to help them solve the problems?  Conversely, did you
+>> find any of our guidance to be misleading?
+
+>> Do you have any suggestions for the TAs to more effectively assist
+>> students, either for future quarters or the remaining projects?
+
+>> Any other comments?

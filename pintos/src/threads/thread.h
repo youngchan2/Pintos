@@ -100,6 +100,7 @@ struct thread
    uint32_t *pagedir; /* Page directory. */
    // struct file *fdt[FDT_SIZE];
    struct list fdt;
+   int fd_list[FDT_SIZE];
    int next_fd;
    struct file *running_file;
    struct thread *parent;
