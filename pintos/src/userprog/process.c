@@ -133,7 +133,6 @@ start_process(void *file_name_)
   if (success)
   {
     argument_stack(argv, argc, &if_.esp);
-    vm_init(&t->vm);
   }
   t->load_status = success;
   // printf("Initial esp: %p\n", if_.esp);
@@ -315,6 +314,7 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
 
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create();
+  vm_init(&t->vm);
   if (t->pagedir == NULL)
     goto done;
   process_activate();
@@ -514,13 +514,12 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
     vme->offset = ofs;
     vme->file = file_reopen(file);
     vme->writable = writable;
-
     insert_vme(&thread_current()->vm, vme);
     /* Advance. */
     read_bytes -= page_read_bytes;
     zero_bytes -= page_zero_bytes;
-    upage += PGSIZE;
     ofs += page_read_bytes;
+    upage += PGSIZE;
   }
   return true;
 }
@@ -538,7 +537,9 @@ setup_stack(void **esp)
   {
     success = install_page(((uint8_t *)PHYS_BASE) - PGSIZE, kpage, true);
     if (success)
+    {
       *esp = PHYS_BASE;
+    }
     else
       palloc_free_page(kpage);
   }
@@ -581,30 +582,26 @@ bool handle_mm_fault(struct vm_entry *vme)
   if (kpage == NULL)
     return false;
 
-  if (vme->type == VM_BIN)
+  if (vme->type == VM_BIN || vme->type == VM_FILE)
   {
     load_result = load_file(kpage, vme);
-    if (load_result)
-    {
-      install_page(vme->vaddr, kpage, vme->writable);
-      return true;
-    }
-    else
-    {
-      palloc_free_page(kpage);
-      return false;
-    }
-  }
-  else if (vme->type == VM_FILE)
-  {
-    return false;
   }
   else if (vme->type == VM_ANON)
   {
-    return false;
   }
   else
   {
     return false;
   }
+  if (load_result)
+  {
+    install_page(vme->vaddr, kpage, vme->writable);
+    return true;
+  }
+  else
+  {
+    palloc_free_page(kpage);
+    return false;
+  }
+  return load_result;
 }

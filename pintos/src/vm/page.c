@@ -2,7 +2,8 @@
 #include "threads/thread.h"
 #include "threads/malloc.h"
 #include <string.h>
-// #include "threads/vaddr.h"
+#include "threads/vaddr.h"
+#include <stdio.h>
 
 void vm_init(struct hash *vm);
 void vm_destroy(struct hash *vm);
@@ -28,8 +29,8 @@ struct vm_entry *find_vme(void *vaddr)
     struct vm_entry v;
     struct hash_elem *e;
 
-    // v.vaddr = pg_round_down(vaddr); // 확인 => #include "threads/vaddr.h" 필요
-    v.vaddr = vaddr;
+    v.vaddr = pg_round_down(vaddr); // 확인 => #include "threads/vaddr.h" 필요
+    // v.vaddr = vaddr;
     e = hash_find(&t->vm, &v.elem);
     if (e == NULL)
         return NULL;
@@ -38,17 +39,11 @@ struct vm_entry *find_vme(void *vaddr)
 }
 bool insert_vme(struct hash *vm, struct vm_entry *vme)
 {
-    if (hash_insert(vm, &vme->elem) == NULL)
-        return true;
-
-    return false;
+    return hash_insert(vm, &vme->elem) == NULL;
 }
 bool delete_vme(struct hash *vm, struct vm_entry *vme)
 {
-    if (hash_delete(vm, &vme->elem) == NULL)
-        return true;
-
-    return false;
+    return hash_delete(vm, &vme->elem) == NULL;
 }
 
 static unsigned vm_hash_func(const struct hash_elem *e, void *aux UNUSED)
