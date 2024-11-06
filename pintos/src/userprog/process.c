@@ -108,7 +108,7 @@ static void
 start_process(void *file_name_)
 {
   struct thread *t = thread_current();
-  copy_fdt(t->parent, t);
+  // copy_fdt(t->parent, t);
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
@@ -193,7 +193,21 @@ void process_exit(void)
 {
   struct thread *cur = thread_current();
   uint32_t *pd;
+
+  struct list_elem *e;
+  struct list_elem *next;
+  struct mmap_file *mfile;
   vm_destroy(&cur->vm);
+  // if (!list_empty(&cur->mmap_list))
+  // {
+  //   for (e = list_begin(&cur->mmap_list); e = list_end(&cur->mmap_list);)
+  //   {
+  //     next = list_next(e);
+  //     mfile = list_entry(e, struct mmap_file, elem);
+  //     unmapping(mfile, e);
+  //     e = next;
+  //   }
+  // }
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -578,22 +592,21 @@ install_page(void *upage, void *kpage, bool writable)
 bool handle_mm_fault(struct vm_entry *vme)
 {
   uint8_t *kpage = palloc_get_page(PAL_USER);
-  bool load_result = false;
+  bool success = false;
   if (kpage == NULL)
     return false;
-
-  if (vme->type == VM_BIN || vme->type == VM_FILE)
+  switch (vme->type)
   {
-    load_result = load_file(kpage, vme);
+  case VM_BIN:
+    success = load_file(kpage, vme);
+    break;
+  case VM_FILE:
+    success = load_file(kpage, vme);
+    break;
+  case VM_ANON:
+    break;
   }
-  else if (vme->type == VM_ANON)
-  {
-  }
-  else
-  {
-    return false;
-  }
-  if (load_result)
+  if (success)
   {
     install_page(vme->vaddr, kpage, vme->writable);
     return true;
@@ -603,5 +616,5 @@ bool handle_mm_fault(struct vm_entry *vme)
     palloc_free_page(kpage);
     return false;
   }
-  return load_result;
+  return success;
 }

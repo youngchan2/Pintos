@@ -25,6 +25,8 @@ void seek(int fd, unsigned position);
 unsigned tell(int fd);
 void close(int fd);
 int pipe(int *fds);
+int mmap(int fd, void *addr);
+void munmap(int mappid);
 
 enum fd_type
 {

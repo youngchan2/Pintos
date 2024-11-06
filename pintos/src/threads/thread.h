@@ -114,6 +114,8 @@ struct thread
    int exit_status;
    // #endif
    struct hash vm;
+   int mapid;
+   struct list mmap_list;
    /* Owned by thread.c. */
    unsigned magic; /* Detects stack overflow. */
 };

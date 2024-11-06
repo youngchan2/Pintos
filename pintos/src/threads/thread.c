@@ -468,6 +468,9 @@ init_thread(struct thread *t, const char *name, int priority)
   t->exit_status = 0;
   t->next_fd = 3;
 
+  t->mapid = 0;
+  list_init(&t->mmap_list);
+
   old_level = intr_disable();
   list_push_back(&all_list, &t->allelem);
   intr_set_level(old_level);

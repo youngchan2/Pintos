@@ -13,6 +13,7 @@
 #include "devices/input.h"
 #include <string.h>
 #include "threads/malloc.h"
+#include "vm/page.h"
 
 static void syscall_handler(struct intr_frame *);
 
@@ -108,6 +109,14 @@ syscall_handler(struct intr_frame *f)
   case SYS_PIPE:
     allocate_argument(argv, p, 1);
     (f->eax) = pipe((int *)argv[0]);
+    break;
+  case SYS_MMAP:
+    allocate_argument(argv, p, 2);
+    (f->eax) = mmap((int)argv[0], (void *)argv[1]);
+    break;
+  case SYS_MUNMAP:
+    allocate_argument(argv, p, 1);
+    munmap((int)argv[0]);
     break;
   }
 }
@@ -690,4 +699,108 @@ int pipe(int *fds)
   list_push_back(&cur_thread->fdt, &fd2->fd_elem);
 
   return 0;
+}
+
+int mmap(int fd, void *addr)
+{
+  if (fd == 0 || fd == 1 || fd > FDT_SIZE || (int)addr % PGSIZE != 0 || addr == 0)
+  {
+    return -1;
+  }
+  // check overlap
+  if (find_vme(addr) != NULL)
+  {
+    return -1;
+  }
+
+  struct thread *cur_thread = thread_current();
+  struct list_elem *e;
+  struct file *file = NULL;
+
+  for (e = list_begin(&cur_thread->fdt); e != list_end(&cur_thread->fdt); e = list_next(e))
+  {
+    struct fd *fdelem = list_entry(e, struct fd, fd_elem);
+    if (fdelem->fd == fd)
+    {
+      file = fdelem->file;
+      break;
+    }
+  }
+  if (file == NULL)
+  {
+    return -1;
+  }
+  else
+  {
+    file = file_reopen(file);
+    int size = file_length(file);
+
+    if (size == 0)
+    {
+      return -1;
+    }
+    else
+    {
+      struct mmap_file *mfile = (struct mmap_file *)malloc(sizeof(struct mmap_file));
+      mfile->mapid = cur_thread->mapid++;
+      mfile->file = file;
+      list_init(&mfile->vme_list);
+      list_push_back(&cur_thread->mmap_list, &mfile->elem);
+
+      size_t offset = 0;
+      while (size > 0)
+      {
+        size_t read = size > PGSIZE ? PGSIZE : size;
+        size_t zero = PGSIZE - read;
+
+        struct vm_entry *vme = (struct vm_entry *)malloc(sizeof(struct vm_entry));
+        vme->type = VM_FILE;
+        vme->vaddr = addr;
+        vme->zero_bytes = zero;
+        vme->read_bytes = read;
+        vme->offset = offset;
+        vme->file = file;
+        vme->writable = true;
+
+        list_push_back(&mfile->vme_list, &vme->mmap_file_elem);
+        insert_vme(&cur_thread->vm, vme);
+
+        size -= PGSIZE;
+        offset += PGSIZE;
+        addr += PGSIZE;
+      }
+
+      return mfile->mapid;
+    }
+  }
+}
+void munmap(int mapid)
+{
+  struct mmap_file *mfile;
+  struct list_elem *e;
+  struct thread *cur_thread = thread_current();
+
+  for (e = list_begin(&cur_thread->mmap_list); e != list_end(&cur_thread->mmap_list); e = list_next(e))
+  {
+    mfile = list_entry(e, struct mmap_file, elem);
+    if (mfile->mapid == mapid)
+    {
+      // mapid에 해당하는 mmap file 안의 모든 vme 삭제하기
+      struct vm_entry *vme;
+
+      while (!list_empty(&mfile->vme_list))
+      {
+        vme = list_entry(list_pop_front(&mfile->vme_list), struct vm_entry, mmap_file_elem);
+        if (pagedir_is_dirty(cur_thread->pagedir, vme->vaddr))
+        {
+          file_write_at(vme->file, vme->vaddr, vme->read_bytes, vme->offset);
+        }
+        delete_vme(&cur_thread->vm, vme);
+      }
+      list_remove(e);
+      file_close(mfile->file);
+      free(mfile);
+      return;
+    }
+  }
 }
