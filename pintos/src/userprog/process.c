@@ -19,6 +19,8 @@
 #include "threads/vaddr.h"
 #include "threads/malloc.h"
 #include "vm/page.h"
+#include "devices/block.h"
+#include "userprog/syscall.h"
 
 static thread_func start_process NO_RETURN;
 static bool load(const char *cmdline, void (**eip)(void), void **esp);
@@ -194,20 +196,35 @@ void process_exit(void)
   struct thread *cur = thread_current();
   uint32_t *pd;
 
-  struct list_elem *e;
-  struct list_elem *next;
-  struct mmap_file *mfile;
+  if (!list_empty(&cur->mmap_list))
+  {
+    struct list_elem *e = list_begin(&cur->mmap_list);
+    struct list_elem *tmp;
+    struct mmap_file *mfile;
+    while (e != list_end(&cur->mmap_list))
+    {
+      tmp = list_next(e);
+      mfile = list_entry(e, struct mmap_file, elem);
+      struct vm_entry *vme;
+
+      while (!list_empty(&mfile->vme_list))
+      {
+        vme = list_entry(list_pop_front(&mfile->vme_list), struct vm_entry, mmap_file_elem);
+        if (pagedir_is_dirty(cur->pagedir, vme->vaddr))
+        {
+          file_write_at(vme->file, vme->vaddr, vme->read_bytes, vme->offset);
+        }
+        delete_vme(&cur->vm, vme);
+      }
+      list_remove(e);
+      file_close(mfile->file);
+      free(mfile);
+
+      e = tmp;
+    }
+  }
   vm_destroy(&cur->vm);
-  // if (!list_empty(&cur->mmap_list))
-  // {
-  //   for (e = list_begin(&cur->mmap_list); e = list_end(&cur->mmap_list);)
-  //   {
-  //     next = list_next(e);
-  //     mfile = list_entry(e, struct mmap_file, elem);
-  //     unmapping(mfile, e);
-  //     e = next;
-  //   }
-  // }
+
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -528,6 +545,7 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
     vme->offset = ofs;
     vme->file = file_reopen(file);
     vme->writable = writable;
+    vme->pinned = false;
     insert_vme(&thread_current()->vm, vme);
     /* Advance. */
     read_bytes -= page_read_bytes;
@@ -543,29 +561,31 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack(void **esp)
 {
-  uint8_t *kpage;
+  struct page *frame = page_alloc(PAL_USER | PAL_ZERO);
   bool success = false;
 
-  kpage = palloc_get_page(PAL_USER | PAL_ZERO);
-  if (kpage != NULL)
+  success = install_page(((uint8_t *)PHYS_BASE) - PGSIZE, frame->paddr, true);
+  if (success)
   {
-    success = install_page(((uint8_t *)PHYS_BASE) - PGSIZE, kpage, true);
-    if (success)
-    {
-      *esp = PHYS_BASE;
-    }
-    else
-      palloc_free_page(kpage);
+    *esp = PHYS_BASE;
+    struct vm_entry *vme = (struct vm_entry *)malloc(sizeof(struct vm_entry));
+    vme->type = VM_ANON;
+    vme->vaddr = ((uint8_t *)PHYS_BASE) - PGSIZE;
+    vme->zero_bytes = 0;
+    vme->read_bytes = 0;
+    vme->offset = 0;
+    vme->file = NULL;
+    vme->writable = true;
+    vme->pinned = false;
+    insert_vme(&thread_current()->vm, vme);
+
+    frame->vme = vme;
+    list_push_back(&lru_list, &frame->lru_elem);
   }
-  struct vm_entry *vme = (struct vm_entry *)malloc(sizeof(struct vm_entry));
-  vme->type = VM_ANON;
-  vme->vaddr = ((uint8_t *)PHYS_BASE) - PGSIZE;
-  vme->zero_bytes = 0;
-  vme->read_bytes = 0;
-  vme->offset = 0;
-  vme->file = NULL;
-  vme->writable = true;
-  insert_vme(&thread_current()->vm, vme);
+  else
+  {
+    page_free(frame);
+  }
 
   return success;
 }
@@ -589,32 +609,80 @@ install_page(void *upage, void *kpage, bool writable)
   return (pagedir_get_page(t->pagedir, upage) == NULL && pagedir_set_page(t->pagedir, upage, kpage, writable));
 }
 
+bool stack_grow(void *addr, void *esp)
+{
+  void *limit = PHYS_BASE - 8 * 1024 * 1024;
+  if (addr < limit)
+  {
+    return false;
+  }
+  if (addr < esp - 32)
+  {
+    return false;
+  }
+  if (!is_user_vaddr(pg_round_down(addr)))
+  {
+    return false;
+  }
+
+  struct page *frame;
+  bool success = false;
+
+  frame = page_alloc(PAL_USER | PAL_ZERO);
+  struct vm_entry *vme = (struct vm_entry *)malloc(sizeof(struct vm_entry));
+
+  vme->type = VM_ANON;
+  vme->vaddr = pg_round_down(addr);
+  vme->zero_bytes = 0;
+  vme->read_bytes = 0;
+  vme->offset = 0;
+  vme->file = NULL;
+  vme->writable = true;
+  vme->pinned = false;
+  insert_vme(&thread_current()->vm, vme);
+
+  frame->vme = vme;
+  list_push_back(&lru_list, &frame->lru_elem);
+
+  success = install_page(vme->vaddr, frame->paddr, vme->writable);
+  if (!success)
+  {
+    free(vme);
+    page_free(frame);
+  }
+  return success;
+}
+
 bool handle_mm_fault(struct vm_entry *vme)
 {
-  uint8_t *kpage = palloc_get_page(PAL_USER);
+  struct page *frame;
   bool success = false;
-  if (kpage == NULL)
-    return false;
+
+  frame = page_alloc(PAL_USER | PAL_ZERO);
+  frame->vme = vme;
+
   switch (vme->type)
   {
   case VM_BIN:
-    success = load_file(kpage, vme);
+    success = load_file(frame->paddr, vme);
     break;
   case VM_FILE:
-    success = load_file(kpage, vme);
+    success = load_file(frame->paddr, vme);
     break;
   case VM_ANON:
+    success = swap_in(frame);
     break;
   }
+
   if (success)
   {
-    install_page(vme->vaddr, kpage, vme->writable);
-    return true;
+    install_page(vme->vaddr, frame->paddr, vme->writable);
   }
   else
   {
-    palloc_free_page(kpage);
-    return false;
+    free(vme);
+    page_free(frame);
   }
+
   return success;
 }

@@ -37,6 +37,7 @@
 #include "filesys/filesys.h"
 #include "filesys/fsutil.h"
 #endif
+#include "vm/page.h"
 
 /* Page directory with kernel mappings only. */
 uint32_t *init_page_dir;
@@ -125,7 +126,12 @@ int main(void)
   locate_block_devices();
   filesys_init(format_filesys);
 #endif
-
+  struct block *swap_partition = block_get_role(BLOCK_SWAP);
+  swap_bitmap = bitmap_create(block_size(swap_partition));
+  list_init(&lru_list);
+  lock_init(&lru_lock);
+  lock_init(&swap_lock);
+  clock_pointer = NULL;
   printf("Boot complete.\n");
   /* Run actions specified on kernel command line. */
   run_actions(argv);

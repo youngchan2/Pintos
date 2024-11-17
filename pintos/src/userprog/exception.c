@@ -166,12 +166,14 @@ page_fault(struct intr_frame *f)
    // kill(f);
 
    struct vm_entry *vme = find_vme(fault_addr);
+   bool result;
    if (vme == NULL)
-      exit(-1);
+      result = stack_grow(fault_addr, f->esp);
    else
-   {
-      bool result = handle_mm_fault(vme);
-      if (!result)
-         exit(-1);
-   }
+      result = handle_mm_fault(vme);
+
+   if (!result)
+      exit(-1);
+
+   return;
 }

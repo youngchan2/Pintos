@@ -25,6 +25,28 @@ static void check_valid_ptr(void *ptr)
   }
 }
 
+static void pin_page(void *buffer, unsigned size)
+{
+  void *vaddr;
+  for (vaddr = buffer; vaddr < buffer + size; vaddr += PGSIZE)
+  {
+    struct vm_entry *vme = find_vme(vaddr);
+    vme->pinned = true;
+  }
+  return;
+}
+
+static void unpin_page(void *buffer, unsigned size)
+{
+  void *vaddr;
+  for (vaddr = buffer; vaddr < buffer + size; vaddr += PGSIZE)
+  {
+    struct vm_entry *vme = find_vme(vaddr);
+    vme->pinned = false;
+  }
+  return;
+}
+
 static void allocate_argument(int *argv, void *esp, int num)
 {
   void *tmp = esp;
@@ -88,11 +110,15 @@ syscall_handler(struct intr_frame *f)
     break;
   case SYS_READ:
     allocate_argument(argv, p, 3);
+    pin_page((void *)argv[1], (unsigned)argv[2]);
     (f->eax) = read((int)argv[0], (void *)argv[1], (unsigned)argv[2]);
+    unpin_page((void *)argv[1], (unsigned)argv[2]);
     break;
   case SYS_WRITE:
     allocate_argument(argv, p, 3);
-    (f->eax) = write((int)argv[0], (const void *)argv[1], (unsigned)argv[2]);
+    pin_page((void *)argv[1], (unsigned)argv[2]);
+    (f->eax) = write((int)argv[0], (void *)argv[1], (unsigned)argv[2]);
+    unpin_page((void *)argv[1], (unsigned)argv[2]);
     break;
   case SYS_SEEK:
     allocate_argument(argv, p, 2);
@@ -392,7 +418,7 @@ int read(int fd, void *buffer, unsigned size)
   return (int)actual_read;
 }
 
-int write(int fd, const void *buffer, unsigned size)
+int write(int fd, void *buffer, unsigned size)
 {
   if (fd < 0 || fd >= FDT_SIZE)
   {
@@ -404,6 +430,8 @@ int write(int fd, const void *buffer, unsigned size)
   }
   int actual_write = 0;
   lock_acquire(&filesys_lock);
+  check_valid_ptr(buffer);
+
   if (fd == 1)
   {
     putbuf(buffer, size);
@@ -735,43 +763,36 @@ int mmap(int fd, void *addr)
     file = file_reopen(file);
     int size = file_length(file);
 
-    if (size == 0)
+    struct mmap_file *mfile = (struct mmap_file *)malloc(sizeof(struct mmap_file));
+    mfile->mapid = cur_thread->mapid++;
+    mfile->file = file;
+    list_init(&mfile->vme_list);
+    list_push_back(&cur_thread->mmap_list, &mfile->elem);
+
+    size_t offset = 0;
+    while (size > 0)
     {
-      return -1;
+      size_t read = size < PGSIZE ? size : PGSIZE;
+      size_t zero = PGSIZE - read;
+
+      struct vm_entry *vme = (struct vm_entry *)malloc(sizeof(struct vm_entry));
+      vme->type = VM_FILE;
+      vme->vaddr = addr;
+      vme->zero_bytes = zero;
+      vme->read_bytes = read;
+      vme->offset = offset;
+      vme->file = file;
+      vme->writable = true;
+      vme->pinned = false;
+      list_push_back(&mfile->vme_list, &vme->mmap_file_elem);
+      insert_vme(&cur_thread->vm, vme);
+
+      size -= PGSIZE;
+      offset += PGSIZE;
+      addr += PGSIZE;
     }
-    else
-    {
-      struct mmap_file *mfile = (struct mmap_file *)malloc(sizeof(struct mmap_file));
-      mfile->mapid = cur_thread->mapid++;
-      mfile->file = file;
-      list_init(&mfile->vme_list);
-      list_push_back(&cur_thread->mmap_list, &mfile->elem);
 
-      size_t offset = 0;
-      while (size > 0)
-      {
-        size_t read = size > PGSIZE ? PGSIZE : size;
-        size_t zero = PGSIZE - read;
-
-        struct vm_entry *vme = (struct vm_entry *)malloc(sizeof(struct vm_entry));
-        vme->type = VM_FILE;
-        vme->vaddr = addr;
-        vme->zero_bytes = zero;
-        vme->read_bytes = read;
-        vme->offset = offset;
-        vme->file = file;
-        vme->writable = true;
-
-        list_push_back(&mfile->vme_list, &vme->mmap_file_elem);
-        insert_vme(&cur_thread->vm, vme);
-
-        size -= PGSIZE;
-        offset += PGSIZE;
-        addr += PGSIZE;
-      }
-
-      return mfile->mapid;
-    }
+    return mfile->mapid;
   }
 }
 void munmap(int mapid)
