@@ -42,6 +42,7 @@ struct vm_entry
     struct list_elem mmap_file_elem;
     uint32_t swap_slot;
     bool writable;
+    bool pin;
 };
 
 enum vm_type
@@ -104,7 +105,6 @@ struct page
 	struct list lru_list;
 	struct list_elem *clock_pointer;
 	struct lock lru_lock;
-	struct lock swap_lock;
 
 	bool swap_in(struct page *frame);
 	void write_swap_partition(struct page *frame);
@@ -184,7 +184,7 @@ struct page
 >> where your design falls along this continuum and why you chose to
 >> design it this way.
 
-	To make it easy, I use a lock only for global variables which are lru list and swap bitmap.
+	To make it easy, I use a lock only for lru list.
 
 			 MEMORY MAPPED FILES
 			 ===================

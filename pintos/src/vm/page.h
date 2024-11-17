@@ -11,7 +11,6 @@ struct bitmap *swap_bitmap;
 struct list lru_list;
 struct list_elem *clock_pointer;
 struct lock lru_lock;
-struct lock swap_lock;
 
 struct vm_entry
 {
@@ -25,7 +24,7 @@ struct vm_entry
     struct list_elem mmap_file_elem;
     uint32_t swap_slot;
     bool writable;
-    bool pinned;
+    bool pin;
 };
 
 enum vm_type
@@ -54,8 +53,8 @@ struct mmap_file
 void vm_init(struct hash *vm);
 void vm_destroy(struct hash *vm);
 struct vm_entry *find_vme(void *vaddr);
-bool insert_vme(struct hash *vm, struct vm_entry *vme);
-bool delete_vme(struct hash *vm, struct vm_entry *vme);
+void insert_vme(struct hash *vm, struct vm_entry *vme);
+void delete_vme(struct hash *vm, struct vm_entry *vme);
 bool load_file(void *kaddr, struct vm_entry *vme);
 bool swap_in(struct page *frame);
 void write_swap_partition(struct page *frame);

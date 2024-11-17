@@ -130,7 +130,6 @@ int main(void)
   swap_bitmap = bitmap_create(block_size(swap_partition));
   list_init(&lru_list);
   lock_init(&lru_lock);
-  lock_init(&swap_lock);
   clock_pointer = NULL;
   printf("Boot complete.\n");
   /* Run actions specified on kernel command line. */

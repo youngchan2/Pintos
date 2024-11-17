@@ -545,7 +545,7 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
     vme->offset = ofs;
     vme->file = file_reopen(file);
     vme->writable = writable;
-    vme->pinned = false;
+    vme->pin = false;
     insert_vme(&thread_current()->vm, vme);
     /* Advance. */
     read_bytes -= page_read_bytes;
@@ -576,11 +576,10 @@ setup_stack(void **esp)
     vme->offset = 0;
     vme->file = NULL;
     vme->writable = true;
-    vme->pinned = false;
+    vme->pin = false;
     insert_vme(&thread_current()->vm, vme);
 
     frame->vme = vme;
-    list_push_back(&lru_list, &frame->lru_elem);
   }
   else
   {
@@ -611,8 +610,7 @@ install_page(void *upage, void *kpage, bool writable)
 
 bool stack_grow(void *addr, void *esp)
 {
-  void *limit = PHYS_BASE - 8 * 1024 * 1024;
-  if (addr < limit)
+  if (addr < PHYS_BASE - 8 * 1024 * 1024)
   {
     return false;
   }
@@ -625,31 +623,30 @@ bool stack_grow(void *addr, void *esp)
     return false;
   }
 
-  struct page *frame;
+  struct page *frame = page_alloc(PAL_USER | PAL_ZERO);
   bool success = false;
 
-  frame = page_alloc(PAL_USER | PAL_ZERO);
-  struct vm_entry *vme = (struct vm_entry *)malloc(sizeof(struct vm_entry));
-
-  vme->type = VM_ANON;
-  vme->vaddr = pg_round_down(addr);
-  vme->zero_bytes = 0;
-  vme->read_bytes = 0;
-  vme->offset = 0;
-  vme->file = NULL;
-  vme->writable = true;
-  vme->pinned = false;
-  insert_vme(&thread_current()->vm, vme);
-
-  frame->vme = vme;
-  list_push_back(&lru_list, &frame->lru_elem);
-
-  success = install_page(vme->vaddr, frame->paddr, vme->writable);
-  if (!success)
+  success = install_page(pg_round_down(addr), frame->paddr, true);
+  if (success)
   {
-    free(vme);
+    struct vm_entry *vme = (struct vm_entry *)malloc(sizeof(struct vm_entry));
+    vme->type = VM_ANON;
+    vme->vaddr = pg_round_down(addr);
+    vme->zero_bytes = 0;
+    vme->read_bytes = 0;
+    vme->offset = 0;
+    vme->file = NULL;
+    vme->writable = true;
+    vme->pin = false;
+    insert_vme(&thread_current()->vm, vme);
+
+    frame->vme = vme;
+  }
+  else
+  {
     page_free(frame);
   }
+
   return success;
 }
 
@@ -680,7 +677,6 @@ bool handle_mm_fault(struct vm_entry *vme)
   }
   else
   {
-    free(vme);
     page_free(frame);
   }
 

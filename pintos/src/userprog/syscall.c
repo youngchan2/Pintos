@@ -31,7 +31,7 @@ static void pin_page(void *buffer, unsigned size)
   for (vaddr = buffer; vaddr < buffer + size; vaddr += PGSIZE)
   {
     struct vm_entry *vme = find_vme(vaddr);
-    vme->pinned = true;
+    vme->pin = true;
   }
   return;
 }
@@ -42,7 +42,7 @@ static void unpin_page(void *buffer, unsigned size)
   for (vaddr = buffer; vaddr < buffer + size; vaddr += PGSIZE)
   {
     struct vm_entry *vme = find_vme(vaddr);
-    vme->pinned = false;
+    vme->pin = false;
   }
   return;
 }
@@ -744,6 +744,7 @@ int mmap(int fd, void *addr)
   struct thread *cur_thread = thread_current();
   struct list_elem *e;
   struct file *file = NULL;
+  int size = 0;
 
   for (e = list_begin(&cur_thread->fdt); e != list_end(&cur_thread->fdt); e = list_next(e))
   {
@@ -761,7 +762,7 @@ int mmap(int fd, void *addr)
   else
   {
     file = file_reopen(file);
-    int size = file_length(file);
+    size = file_length(file);
 
     struct mmap_file *mfile = (struct mmap_file *)malloc(sizeof(struct mmap_file));
     mfile->mapid = cur_thread->mapid++;
@@ -783,7 +784,7 @@ int mmap(int fd, void *addr)
       vme->offset = offset;
       vme->file = file;
       vme->writable = true;
-      vme->pinned = false;
+      vme->pin = true;
       list_push_back(&mfile->vme_list, &vme->mmap_file_elem);
       insert_vme(&cur_thread->vm, vme);
 
@@ -791,7 +792,7 @@ int mmap(int fd, void *addr)
       offset += PGSIZE;
       addr += PGSIZE;
     }
-
+    unpin_page(addr, size);
     return mfile->mapid;
   }
 }

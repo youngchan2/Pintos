@@ -11,8 +11,8 @@
 void vm_init(struct hash *vm);
 void vm_destroy(struct hash *vm);
 struct vm_entry *find_vme(void *vaddr);
-bool insert_vme(struct hash *vm, struct vm_entry *vme);
-bool delete_vme(struct hash *vm, struct vm_entry *vme);
+void insert_vme(struct hash *vm, struct vm_entry *vme);
+void delete_vme(struct hash *vm, struct vm_entry *vme);
 bool load_file(void *kaddr, struct vm_entry *vme);
 static unsigned vm_hash_func(const struct hash_elem *e, void *aux UNUSED);
 static bool vm_less_func(const struct hash_elem *a, const struct hash_elem *b, void *aux UNUSED);
@@ -39,13 +39,14 @@ struct vm_entry *find_vme(void *vaddr)
 
     return hash_entry(e, struct vm_entry, elem);
 }
-bool insert_vme(struct hash *vm, struct vm_entry *vme)
+void insert_vme(struct hash *vm, struct vm_entry *vme)
 {
-    return hash_insert(vm, &vme->elem) == NULL;
+    hash_insert(vm, &vme->elem);
 }
-bool delete_vme(struct hash *vm, struct vm_entry *vme)
+void delete_vme(struct hash *vm, struct vm_entry *vme)
 {
-    return hash_delete(vm, &vme->elem) != NULL;
+    hash_delete(vm, &vme->elem);
+    free(vme);
 }
 
 static unsigned vm_hash_func(const struct hash_elem *e, void *aux UNUSED)
@@ -79,11 +80,12 @@ bool load_file(void *kaddr, struct vm_entry *vme)
     }
 
     off_t actual_read = file_read_at(vme->file, kaddr, vme->read_bytes, vme->offset);
+    memset(kaddr + vme->read_bytes, 0, vme->zero_bytes);
+
     if (actual_read != (off_t)vme->read_bytes)
     {
         return false;
     }
-    memset(kaddr + vme->read_bytes, 0, vme->zero_bytes);
 
     if (filesys_lock_flag)
     {
@@ -95,7 +97,7 @@ bool load_file(void *kaddr, struct vm_entry *vme)
 
 bool swap_in(struct page *frame)
 {
-    lock_acquire(&swap_lock);
+    lock_acquire(&lru_lock);
     struct block *swap_partition = block_get_role(BLOCK_SWAP);
 
     if (bitmap_test(swap_bitmap, frame->vme->swap_slot))
@@ -106,13 +108,13 @@ bool swap_in(struct page *frame)
         {
             block_read(swap_partition, sector + i, BLOCK_SECTOR_SIZE * i + frame->paddr);
         }
-        bitmap_set(swap_bitmap, frame->vme->swap_slot, false);
-        lock_release(&swap_lock);
+        bitmap_reset(swap_bitmap, frame->vme->swap_slot);
+        lock_release(&lru_lock);
         return true;
     }
     else
     {
-        lock_release(&swap_lock);
+        lock_release(&lru_lock);
         return false;
     }
 }
@@ -128,7 +130,7 @@ void write_swap_partition(struct page *frame)
     {
         block_write(swap_partition, sector + i, BLOCK_SECTOR_SIZE * i + frame->paddr);
     }
-    bitmap_set(swap_bitmap, target_idx, true);
+    bitmap_mark(swap_bitmap, target_idx);
 
     frame->vme->swap_slot = target_idx;
     return;
@@ -154,9 +156,10 @@ void page_free(struct page *frame)
 
     if (clock_pointer == &frame->lru_elem)
         clock_pointer = list_next(clock_pointer);
-    list_remove(&frame->lru_elem);
-    pagedir_clear_page(frame->cur_thread->pagedir, pg_round_down(frame->vme->vaddr));
+
     palloc_free_page(frame->paddr);
+    pagedir_clear_page(frame->cur_thread->pagedir, pg_round_down(frame->vme->vaddr));
+    list_remove(&frame->lru_elem);
     free(frame);
 
     if (lru_lock_flag)
@@ -170,7 +173,7 @@ struct page *find_victim()
     struct page *vicitm;
     vicitm = list_entry(clock_pointer, struct page, lru_elem);
 
-    while (vicitm->vme->pinned == true || pagedir_is_accessed(vicitm->cur_thread->pagedir, vicitm->vme->vaddr))
+    while (vicitm->vme->pin == true || pagedir_is_accessed(vicitm->cur_thread->pagedir, vicitm->vme->vaddr))
     {
         pagedir_set_accessed(vicitm->cur_thread->pagedir, vicitm->vme->vaddr, false);
         clock_pointer = find_clock_pointer();
@@ -182,7 +185,6 @@ struct page *find_victim()
 
 void swap_out(struct page *victim)
 {
-    lock_acquire(&swap_lock);
     bool is_dirty = false;
     switch (victim->vme->type)
     {
@@ -205,7 +207,6 @@ void swap_out(struct page *victim)
         write_swap_partition(victim);
         break;
     }
-    lock_release(&swap_lock);
     page_free(victim);
 }
 
