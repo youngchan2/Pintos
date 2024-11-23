@@ -33,39 +33,39 @@ struct vm_entry *find_vme(void *vaddr)
     struct hash_elem *e;
 
     v.vaddr = pg_round_down(vaddr);
-    e = hash_find(&t->vm, &v.elem);
+    e = hash_find(&t->vm, &v.hash_elem);
     if (e == NULL)
         return NULL;
-
-    return hash_entry(e, struct vm_entry, elem);
+    else
+        return hash_entry(e, struct vm_entry, hash_elem);
 }
 void insert_vme(struct hash *vm, struct vm_entry *vme)
 {
-    hash_insert(vm, &vme->elem);
+    hash_insert(vm, &vme->hash_elem);
 }
 void delete_vme(struct hash *vm, struct vm_entry *vme)
 {
-    hash_delete(vm, &vme->elem);
+    hash_delete(vm, &vme->hash_elem);
     free(vme);
 }
 
 static unsigned vm_hash_func(const struct hash_elem *e, void *aux UNUSED)
 {
-    struct vm_entry *tmp = hash_entry(e, struct vm_entry, elem);
+    struct vm_entry *tmp = hash_entry(e, struct vm_entry, hash_elem);
     return hash_int((int)tmp->vaddr);
 }
 
 static bool vm_less_func(const struct hash_elem *a, const struct hash_elem *b, void *aux UNUSED)
 {
-    struct vm_entry *tmpa = hash_entry(a, struct vm_entry, elem);
-    struct vm_entry *tmpb = hash_entry(b, struct vm_entry, elem);
+    struct vm_entry *tmpa = hash_entry(a, struct vm_entry, hash_elem);
+    struct vm_entry *tmpb = hash_entry(b, struct vm_entry, hash_elem);
 
     return tmpa->vaddr < tmpb->vaddr;
 }
 
 static void vm_destroy_func(struct hash_elem *e, void *aux UNUSED)
 {
-    struct vm_entry *tmp = hash_entry(e, struct vm_entry, elem);
+    struct vm_entry *tmp = hash_entry(e, struct vm_entry, hash_elem);
     free(tmp);
 }
 

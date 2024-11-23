@@ -20,7 +20,7 @@ struct vm_entry
     size_t read_bytes;
     size_t offset;
     struct file *file;
-    struct hash_elem elem;
+    struct hash_elem hash_elem;
     struct list_elem mmap_file_elem;
     uint32_t swap_slot;
     bool writable;
