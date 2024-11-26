@@ -33,7 +33,7 @@ struct buffer_head *find_bce(block_sector_t idx)
     return NULL;
 }
 
-void cache_read(uint8_t *buffer, off_t bytes_read, int sector_ofs, block_sector_t sector_idx, int chunk_size)
+void cache_read(void *buffer, off_t bytes_read, int sector_ofs, block_sector_t sector_idx, int chunk_size)
 {
     lock_acquire(&cache_lock);
 
@@ -66,7 +66,7 @@ void cache_read(uint8_t *buffer, off_t bytes_read, int sector_ofs, block_sector_
     return;
 }
 
-void cache_write(const uint8_t *buffer, off_t bytes_written, int sector_ofs, block_sector_t sector_idx, int chunk_size, int sector_left)
+void cache_write(const void *buffer, off_t bytes_written, int sector_ofs, block_sector_t sector_idx, int chunk_size, int sector_left)
 {
     lock_acquire(&cache_lock);
     struct buffer_head *bh = find_bce(sector_idx);

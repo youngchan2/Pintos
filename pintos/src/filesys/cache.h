@@ -20,8 +20,8 @@ struct buffer_head
 
 void cache_init(void);
 struct buffer_head *find_bce(block_sector_t idx);
-void cache_read(uint8_t *buffer, off_t bytes_read, int sector_ofs, block_sector_t sector_idx, int chunk_size);
-void cache_write(const uint8_t *buffer, off_t bytes_written, int sector_ofs, block_sector_t sector_idx, int chunk_size, int sector_left);
+void cache_read(void *buffer, off_t bytes_read, int sector_ofs, block_sector_t sector_idx, int chunk_size);
+void cache_write(const void *buffer, off_t bytes_written, int sector_ofs, block_sector_t sector_idx, int chunk_size, int sector_left);
 struct list_elem *find_cache_pointer(void);
 void flush_victim(void);
 void cache_shutdown(void);
