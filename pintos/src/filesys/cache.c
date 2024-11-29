@@ -35,7 +35,12 @@ struct buffer_head *find_bce(block_sector_t idx)
 
 void cache_read(void *buffer, off_t bytes_read, int sector_ofs, block_sector_t sector_idx, int chunk_size)
 {
-    lock_acquire(&cache_lock);
+    bool cache_lock_flag = false;
+    if (!lock_held_by_current_thread(&cache_lock))
+    {
+        lock_acquire(&cache_lock);
+        cache_lock_flag = true;
+    }
 
     struct buffer_head *bh = find_bce(sector_idx);
 
@@ -62,13 +67,19 @@ void cache_read(void *buffer, off_t bytes_read, int sector_ofs, block_sector_t s
         memcpy(buffer + bytes_read, bh->data + sector_ofs, chunk_size);
     }
 
-    lock_release(&cache_lock);
+    if (cache_lock_flag)
+        lock_release(&cache_lock);
     return;
 }
 
 void cache_write(const void *buffer, off_t bytes_written, int sector_ofs, block_sector_t sector_idx, int chunk_size, int sector_left)
 {
-    lock_acquire(&cache_lock);
+    bool cache_lock_flag = false;
+    if (!lock_held_by_current_thread(&cache_lock))
+    {
+        lock_acquire(&cache_lock);
+        cache_lock_flag = true;
+    }
     struct buffer_head *bh = find_bce(sector_idx);
 
     if (bh == NULL)
@@ -98,7 +109,8 @@ void cache_write(const void *buffer, off_t bytes_written, int sector_ofs, block_
         memcpy(bh->data + sector_ofs, buffer + bytes_written, chunk_size);
     }
 
-    lock_release(&cache_lock);
+    if (cache_lock_flag)
+        lock_release(&cache_lock);
     return;
 }
 
@@ -106,7 +118,7 @@ struct list_elem *find_cache_pointer()
 {
     if (list_empty(&buffer_cache))
         return NULL;
-    if (cache_pointer == NULL || cache_pointer == list_end(&buffer_cache))
+    if (cache_pointer == NULL || cache_pointer == list_end(&buffer_cache) || list_next(cache_pointer) == list_end(&buffer_cache))
         return list_begin(&buffer_cache);
     return list_next(cache_pointer);
 }
@@ -136,10 +148,18 @@ void flush_victim()
 
 void cache_shutdown()
 {
-    lock_acquire(&cache_lock);
+    bool cache_lock_flag = false;
+    if (!lock_held_by_current_thread(&cache_lock))
+    {
+        lock_acquire(&cache_lock);
+        cache_lock_flag = true;
+    }
     struct list_elem *e = list_begin(&buffer_cache);
     struct list_elem *tmp;
     struct buffer_head *bh;
+
+    cache_cnt = 0;
+    cache_pointer = NULL;
 
     while (e != list_end(&buffer_cache))
     {
@@ -154,7 +174,10 @@ void cache_shutdown()
         e = tmp;
     }
 
-    lock_release(&cache_lock);
+    if (cache_lock_flag)
+        lock_release(&cache_lock);
+
+    return;
 }
 
 void insert_bce(struct buffer_head *bh)

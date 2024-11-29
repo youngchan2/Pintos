@@ -17,6 +17,7 @@
 #endif
 #include "filesys/file.h"
 #include "threads/malloc.h"
+#include "filesys/directory.h"
 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -200,6 +201,11 @@ tid_t thread_create(const char *name, int priority,
   t->parent = thread_current();
   list_push_back(&t->parent->child_list, &t->child);
 
+  if (t->parent->dir != NULL)
+  {
+    t->dir = dir_reopen(t->parent->dir);
+  }
+
   /* Add to run queue. */
   thread_unblock(t);
 
@@ -288,6 +294,7 @@ void thread_exit(void)
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
   intr_disable();
+  dir_close(thread_current()->dir);
   list_remove(&thread_current()->allelem);
   thread_current()->status = THREAD_DYING;
   schedule();
@@ -470,6 +477,8 @@ init_thread(struct thread *t, const char *name, int priority)
 
   t->mapid = 0;
   list_init(&t->mmap_list);
+
+  t->dir = NULL;
 
   old_level = intr_disable();
   list_push_back(&all_list, &t->allelem);

@@ -27,6 +27,11 @@ void close(int fd);
 int pipe(int *fds);
 int mmap(int fd, void *addr);
 void munmap(int mappid);
+bool chdir(const char *dir);
+bool mkdir(const char *dir);
+bool readdir(int fd, char *name);
+bool isdir(int fd);
+int inumber(int fd);
 
 enum fd_type
 {

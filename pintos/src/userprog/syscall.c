@@ -14,6 +14,8 @@
 #include <string.h>
 #include "threads/malloc.h"
 #include "vm/page.h"
+#include "filesys/inode.h"
+#include "filesys/directory.h"
 
 static void syscall_handler(struct intr_frame *);
 
@@ -143,6 +145,26 @@ syscall_handler(struct intr_frame *f)
   case SYS_MUNMAP:
     allocate_argument(argv, p, 1);
     munmap((int)argv[0]);
+    break;
+  case SYS_CHDIR:
+    allocate_argument(argv, p, 1);
+    (f->eax) = chdir((const char *)argv[0]);
+    break;
+  case SYS_MKDIR:
+    allocate_argument(argv, p, 1);
+    (f->eax) = mkdir((const char *)argv[0]);
+    break;
+  case SYS_READDIR:
+    allocate_argument(argv, p, 2);
+    (f->eax) = readdir((int)argv[0], (char *)argv[1]);
+    break;
+  case SYS_ISDIR:
+    allocate_argument(argv, p, 1);
+    (f->eax) = isdir((int)argv[0]);
+    break;
+  case SYS_INUMBER:
+    allocate_argument(argv, p, 1);
+    (f->eax) = inumber((int)argv[0]);
     break;
   }
 }
@@ -429,7 +451,13 @@ int write(int fd, void *buffer, unsigned size)
     return -1;
   }
   int actual_write = 0;
-  lock_acquire(&filesys_lock);
+  bool filesys_lock_flag = false;
+  if (!lock_held_by_current_thread(&filesys_lock))
+  {
+    lock_acquire(&filesys_lock);
+    filesys_lock_flag = true;
+  }
+
   check_valid_ptr(buffer);
 
   if (fd == 1)
@@ -454,8 +482,11 @@ int write(int fd, void *buffer, unsigned size)
       }
       if (fdelem->pipe == NULL)
       {
+        if (inode_is_dir(fdelem->file->inode))
+          return -1;
         actual_write = file_write(fdelem->file, buffer, size);
-        lock_release(&filesys_lock);
+        if (filesys_lock_flag)
+          lock_release(&filesys_lock);
         return actual_write;
       }
       else
@@ -825,4 +856,80 @@ void munmap(int mapid)
       return;
     }
   }
+}
+
+bool chdir(const char *dir)
+{
+  return filesys_chdir(dir);
+}
+
+bool mkdir(const char *dir)
+{
+  return filesys_mkdir(dir);
+}
+
+bool readdir(int fd, char *name)
+{
+  bool success = false;
+  struct thread *cur_thread = thread_current();
+  struct list_elem *e;
+  struct file *file;
+
+  if (fd < 2 || fd >= FDT_SIZE)
+    return success;
+
+  for (e = list_begin(&cur_thread->fdt); e != list_end(&cur_thread->fdt); e = list_next(e))
+  {
+    struct fd *fdelem = list_entry(e, struct fd, fd_elem);
+    if (fdelem->fd == fd)
+    {
+      file = fdelem->file;
+      if (!inode_is_dir(file->inode))
+        return success;
+
+      // struct dir *dir = dir_open(file->inode);
+      // success = dir_readdir(dir, name);
+      // dir_close(dir);
+      success = dir_readdir((struct dir *)file, name);
+      break;
+    }
+  }
+
+  return success;
+}
+
+bool isdir(int fd)
+{
+  struct thread *cur_thread = thread_current();
+  struct list_elem *e;
+  struct file *file;
+  for (e = list_begin(&cur_thread->fdt); e != list_end(&cur_thread->fdt); e = list_next(e))
+  {
+    struct fd *fdelem = list_entry(e, struct fd, fd_elem);
+    if (fdelem->fd == fd)
+    {
+      file = fdelem->file;
+      return inode_is_dir(file->inode);
+    }
+  }
+
+  return false;
+}
+
+int inumber(int fd)
+{
+  struct thread *cur_thread = thread_current();
+  struct list_elem *e;
+  struct file *file;
+  for (e = list_begin(&cur_thread->fdt); e != list_end(&cur_thread->fdt); e = list_next(e))
+  {
+    struct fd *fdelem = list_entry(e, struct fd, fd_elem);
+    if (fdelem->fd == fd)
+    {
+      file = fdelem->file;
+      return (int)inode_get_inumber(file->inode);
+    }
+  }
+
+  return -1;
 }
