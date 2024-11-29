@@ -102,7 +102,9 @@ void filesys_init(bool format)
 
   if (format)
     do_format();
-
+  struct dir *root = dir_open_root();
+  thread_current()->dir = root;
+  dir_special_entries(root, root);
   free_map_open();
 }
 
@@ -183,9 +185,6 @@ do_format(void)
   if (!dir_create(ROOT_DIR_SECTOR, 16))
     PANIC("root directory creation failed");
   free_map_close();
-  struct dir *root = dir_open_root();
-  thread_current()->dir = root;
-  dir_special_entries(root, root);
   printf("done.\n");
 }
 

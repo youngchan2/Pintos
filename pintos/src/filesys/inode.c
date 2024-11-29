@@ -529,7 +529,7 @@ off_t inode_read_at(struct inode *inode, void *buffer_, off_t size, off_t offset
   {
     /* Disk sector to read, starting byte offset within sector. */
     block_sector_t sector_idx = byte_to_sector(&inode_disk, offset);
-    lock_release(&inode->inode_lock);
+    // lock_release(&inode->inode_lock);
     int sector_ofs = offset % BLOCK_SECTOR_SIZE;
 
     /* Bytes left in inode, bytes left in sector, lesser of the two. */
@@ -541,7 +541,7 @@ off_t inode_read_at(struct inode *inode, void *buffer_, off_t size, off_t offset
     int chunk_size = size < min_left ? size : min_left;
     if (chunk_size <= 0)
     {
-      lock_acquire(&inode->inode_lock);
+      // lock_acquire(&inode->inode_lock);
       break;
     }
 
@@ -568,7 +568,7 @@ off_t inode_read_at(struct inode *inode, void *buffer_, off_t size, off_t offset
     size -= chunk_size;
     offset += chunk_size;
     bytes_read += chunk_size;
-    lock_acquire(&inode->inode_lock);
+    // lock_acquire(&inode->inode_lock);
   }
   // free(bounce);
   lock_release(&inode->inode_lock);
@@ -605,7 +605,7 @@ off_t inode_write_at(struct inode *inode, const void *buffer_, off_t size,
   {
     /* Sector to write, starting byte offset within sector. */
     block_sector_t sector_idx = byte_to_sector(&inode_disk, offset);
-    lock_release(&inode->inode_lock);
+    // lock_release(&inode->inode_lock);
     int sector_ofs = offset % BLOCK_SECTOR_SIZE;
 
     /* Bytes left in inode, bytes left in sector, lesser of the two. */
@@ -617,7 +617,7 @@ off_t inode_write_at(struct inode *inode, const void *buffer_, off_t size,
     int chunk_size = size < min_left ? size : min_left;
     if (chunk_size <= 0)
     {
-      lock_acquire(&inode->inode_lock);
+      // lock_acquire(&inode->inode_lock);
       break;
     }
 
@@ -651,7 +651,7 @@ off_t inode_write_at(struct inode *inode, const void *buffer_, off_t size,
     size -= chunk_size;
     offset += chunk_size;
     bytes_written += chunk_size;
-    lock_acquire(&inode->inode_lock);
+    // lock_acquire(&inode->inode_lock);
   }
   // free(bounce);
   lock_release(&inode->inode_lock);
