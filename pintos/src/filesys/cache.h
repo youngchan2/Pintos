@@ -6,6 +6,9 @@
 #include "threads/synch.h"
 #include "filesys/inode.h"
 
+int cache_cnt;
+struct list buffer_cache;
+struct list_elem *cache_pointer;
 struct lock cache_lock;
 
 struct buffer_head
@@ -13,7 +16,6 @@ struct buffer_head
     bool dirty;
     bool access;
     block_sector_t sector;
-    struct inode *inode;
     void *data;
     struct list_elem cache_elem;
 };

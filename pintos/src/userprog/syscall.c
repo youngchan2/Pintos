@@ -887,9 +887,6 @@ bool readdir(int fd, char *name)
       if (!inode_is_dir(file->inode))
         return success;
 
-      // struct dir *dir = dir_open(file->inode);
-      // success = dir_readdir(dir, name);
-      // dir_close(dir);
       success = dir_readdir((struct dir *)file, name);
       break;
     }

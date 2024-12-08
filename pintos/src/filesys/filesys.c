@@ -37,8 +37,7 @@ static struct dir *parse(const char *name, char *last_name)
     ret_dir = dir_reopen(thread_current()->dir);
   }
 
-  tmp = malloc(strlen(name) + 1);
-  memset(tmp, 0, strlen(name) + 1);
+  tmp = calloc(1, strlen(name) + 1);
 
   strlcpy(tmp, name, strlen(name) + 1);
   cur_dir = strtok_r(tmp, "/", &save);
@@ -53,27 +52,29 @@ static struct dir *parse(const char *name, char *last_name)
       return NULL;
     }
   }
-
-  while (cur_dir != NULL && next_dir != NULL)
+  else
   {
-    if (strlen(cur_dir) > NAME_MAX + 1 || strlen(next_dir) > NAME_MAX + 1)
+    while (cur_dir != NULL && next_dir != NULL)
     {
-      dir_close(ret_dir);
-      return NULL;
-    }
-    if (dir_lookup(ret_dir, cur_dir, &inode))
-    {
-      dir_close(ret_dir);
-      ret_dir = dir_open(inode);
-    }
-    else
-    {
-      dir_close(ret_dir);
-      return NULL;
-    }
+      if (strlen(cur_dir) > NAME_MAX + 1 || strlen(next_dir) > NAME_MAX + 1)
+      {
+        dir_close(ret_dir);
+        return NULL;
+      }
+      if (dir_lookup(ret_dir, cur_dir, &inode))
+      {
+        dir_close(ret_dir);
+        ret_dir = dir_open(inode);
+      }
+      else
+      {
+        dir_close(ret_dir);
+        return NULL;
+      }
 
-    strlcpy(cur_dir, next_dir, strlen(next_dir) + 1);
-    next_dir = strtok_r(NULL, "/", &save);
+      strlcpy(cur_dir, next_dir, strlen(next_dir) + 1);
+      next_dir = strtok_r(NULL, "/", &save);
+    }
   }
 
   if (cur_dir == NULL)
@@ -124,8 +125,7 @@ bool filesys_create(const char *name, off_t initial_size)
 {
   block_sector_t inode_sector = 0;
   // struct dir *dir = dir_open_root();
-  char *last_name = malloc(NAME_MAX + 1);
-  memset(last_name, 0, NAME_MAX + 1);
+  char *last_name = calloc(1, NAME_MAX + 1);
 
   struct dir *dir = parse(name, last_name);
   bool success = (dir != NULL && free_map_allocate(1, &inode_sector) && inode_create(inode_sector, initial_size, 0) && dir_add(dir, last_name, inode_sector));
@@ -146,8 +146,7 @@ struct file *
 filesys_open(const char *name)
 {
   // struct dir *dir = dir_open_root();
-  char *last_name = malloc(NAME_MAX + 1);
-  memset(last_name, 0, NAME_MAX + 1);
+  char *last_name = calloc(1, NAME_MAX + 1);
   struct dir *dir = parse(name, last_name);
   struct inode *inode = NULL;
 
@@ -165,9 +164,7 @@ filesys_open(const char *name)
    or if an internal memory allocation fails. */
 bool filesys_remove(const char *name)
 {
-  // struct dir *dir = dir_open_root();
-  char *last_name = malloc(NAME_MAX + 1);
-  memset(last_name, 0, NAME_MAX + 1);
+  char *last_name = calloc(1, NAME_MAX + 1);
   struct dir *dir = parse(name, last_name);
   bool success = dir != NULL && dir_remove(dir, last_name);
   dir_close(dir);
@@ -193,7 +190,6 @@ bool filesys_chdir(const char *name)
   bool success = false;
 
   char *last_name = calloc(1, NAME_MAX + 1);
-  // memset(last_name, 0, NAME_MAX + 1);
   struct dir *dir = parse(name, last_name);
   struct inode *inode = NULL;
   struct dir *chdir;
@@ -225,7 +221,6 @@ bool filesys_mkdir(const char *name)
     return false;
 
   char *last_name = calloc(1, NAME_MAX + 1);
-  // memset(last_name, 0, NAME_MAX + 1);
   struct dir *dir = parse(name, last_name);
 
   block_sector_t inode_sector = 0;

@@ -223,7 +223,6 @@ bool dir_remove(struct dir *dir, const char *name)
       goto done;
   }
 
-  /*확인!@#$@!$!@*/
   if (thread_current()->dir->inode == inode)
     thread_current()->dir = NULL;
 

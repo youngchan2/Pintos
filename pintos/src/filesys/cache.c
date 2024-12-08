@@ -4,10 +4,6 @@
 #include "threads/malloc.h"
 #include "filesys/filesys.h"
 
-int cache_cnt;
-struct list_elem *cache_pointer;
-struct list buffer_cache;
-
 void cache_init()
 {
     list_init(&buffer_cache);
@@ -157,9 +153,6 @@ void cache_shutdown()
     struct list_elem *e = list_begin(&buffer_cache);
     struct list_elem *tmp;
     struct buffer_head *bh;
-
-    cache_cnt = 0;
-    cache_pointer = NULL;
 
     while (e != list_end(&buffer_cache))
     {

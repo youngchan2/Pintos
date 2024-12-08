@@ -8,14 +8,12 @@
 
 >> Fill in the names and email addresses of your group members.
 
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
-
 ---- PRELIMINARIES ----
 
 >> If you have any preliminary comments on your submission, notes for the
 >> TAs, or extra credit, please give them here.
+
+	based on project3 (vm)
 
 >> Please cite any offline or online sources you consulted while
 >> preparing your submission, other than the Pintos documentation, course
@@ -30,13 +28,41 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+struct inode_disk
+{
+  off_t length; /* File size in bytes. */
+  uint32_t is_dir;
+  unsigned magic; /* Magic number. */
+  block_sector_t direct_map_table[DIRECT_BLOCK_ENTRIES];
+  block_sector_t indirect_block_sec;
+  block_sector_t double_indirect_block_sec;
+};
+
+struct inode
+{
+  struct list_elem elem;  /* Element in inode list. */
+  block_sector_t sector;  /* Sector number of disk location. */
+  int open_cnt;           /* Number of openers. */
+  bool removed;           /* True if deleted, false otherwise. */
+  int deny_write_cnt;     /* 0: writes ok, >0: deny writes. */
+  struct inode_disk data; /* Inode content. */
+  struct lock inode_lock;
+};
+
 >> A2: What is the maximum size of a file supported by your inode
 >> structure?  Show your work.
+
+	direct: 123 entries * BLOCK SECTOR SIZE(512 bytes) = 62976 bytes
+	indirect: 128 entries * BLOCK SECTOR SIZE(512 bytes) = 65536 bytes
+	double indirect: 128*128 entries * BLOCK SECTOR SIZE(512 bytes) = 8388608 bytes
 
 ---- SYNCHRONIZATION ----
 
 >> A3: Explain how your code avoids a race if two processes attempt to
 >> extend a file at the same time.
+
+	By inode_create, the system calls inode_write_at function.
+	This function can get lock with the inode_lock entry in the inode_disk.
 
 >> A4: Suppose processes A and B both have file F open, both
 >> positioned at end-of-file.  If A reads and B writes F at the same
@@ -45,12 +71,18 @@ FirstName LastName <email@domain.example>
 >> nonzero data, A is not allowed to see all zeros.  Explain how your
 >> code avoids this race.
 
+	File structure has inode entry and inode structure has an inode lock.
+	Also inode_read_at and inode_write_at function control this lock
+	so read and write can't occur simultaneously.
+
 >> A5: Explain how your synchronization design provides "fairness".
 >> File access is "fair" if readers cannot indefinitely block writers
 >> or vice versa.  That is, many processes reading from a file cannot
 >> prevent forever another process from writing the file, and many
 >> processes writing to a file cannot prevent another process forever
 >> from reading the file.
+
+	Whenever the function finish it's work, it releases the lock.
 
 ---- RATIONALE ----
 
@@ -59,6 +91,8 @@ FirstName LastName <email@domain.example>
 >> indirect blocks?  If not, why did you choose an alternative inode
 >> structure, and what advantages and disadvantages does your
 >> structure have, compared to a multilevel index?
+
+	Using multilevel with Direct, Indirect, Double indirect cases.
 
 			    SUBDIRECTORIES
 			    ==============
@@ -69,10 +103,17 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+	Nothing
+
 ---- ALGORITHMS ----
 
 >> B2: Describe your code for traversing a user-specified path.  How
 >> do traversals of absolute and relative paths differ?
+
+	During parsing the path name, check whether the name is start with '/'.
+	If it does, it means absolute path so the system opens root directory.
+	If it doesn't, it means relative path so start with opening the current directory in the thread.
+	Then go into the while loop to find the last part of the path name which means file name.
 
 ---- SYNCHRONIZATION ----
 
@@ -81,15 +122,24 @@ FirstName LastName <email@domain.example>
 >> should succeed, as should only one of two simultaneous attempts to
 >> create a file with the same name, and so on.
 
+	All operation about directory and file system use inode operation.
+	In the inode operation, I use the inode_lock variable to prevent race conditions.
+
 >> B5: Does your implementation allow a directory to be removed if it
 >> is open by a process or if it is in use as a process's current
 >> working directory?  If so, what happens to that process's future
 >> file system operations?  If not, how do you prevent it?
 
+	First, the system checks whether the directory is empty or not.
+	If the directory is empty, it can remove it.
+
 ---- RATIONALE ----
 
 >> B6: Explain why you chose to represent the current directory of a
 >> process the way you did.
+
+	Since the parent thread inherits its current directory to the child thread,
+	I can allocate the current directory when the new thread is created.
 
 			     BUFFER CACHE
 			     ============
@@ -100,14 +150,37 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+	struct buffer_head
+{
+    bool dirty;
+    bool access;
+    block_sector_t sector;
+    struct inode *inode;
+    void *data;
+    struct list_elem cache_elem;
+};
+
+int cache_cnt;
+struct list_elem *cache_pointer;
+struct list buffer_cache;
+struct lock cache_lock;
+
 ---- ALGORITHMS ----
 
 >> C2: Describe how your cache replacement algorithm chooses a cache
 >> block to evict.
 
+	Using clock algorithm to evict block in the cache.
+	It is similar way to vm page swap.
+
 >> C3: Describe your implementation of write-behind.
 
+	In the buffer_head structure, there is a dirty flag.
+	If this flag is ture, write it to the disk.
+
 >> C4: Describe your implementation of read-ahead.
+
+	Using block_read in the cache_read function.
 
 ---- SYNCHRONIZATION ----
 
@@ -115,14 +188,23 @@ FirstName LastName <email@domain.example>
 >> buffer cache block, how are other processes prevented from evicting
 >> that block?
 
+	Use the cache_lock in the cache_read and cache_write to prevent that issue.
+	Since using another lock can cause the dead lock, each function check the aquirement of lock.
+
 >> C6: During the eviction of a block from the cache, how are other
 >> processes prevented from attempting to access the block?
+
+	Before flush the block in the cache_read and cache_write function, each function acquires the lock already.
+	It can prevent that issue.
 
 ---- RATIONALE ----
 
 >> C7: Describe a file workload likely to benefit from buffer caching,
 >> and workloads likely to benefit from read-ahead and write-behind.
 
+	buffer cache: frequent reads and writes to short filesys
+	read-ahead & write-behind: read and write to large files or continuous storage part.
+	
 			   SURVEY QUESTIONS
 			   ================
 
